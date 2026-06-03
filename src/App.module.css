@@ -210,3 +210,51 @@
     padding: 0 8px;
   }
 }
+
+@media (max-width: 600px) {
+  .header {
+    padding: 6px 10px;
+    gap: 6px;
+    flex-wrap: nowrap;
+    align-items: center;
+  }
+
+  .title {
+    display: none;
+  }
+
+  .stamp {
+    display: none;
+  }
+
+  .headerLeft {
+    flex-shrink: 0;
+  }
+
+  .headerActions {
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    gap: 4px;
+    flex: 1;
+  }
+
+  .headerActions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .refreshBtn {
+    font-size: 10px;
+    padding: 5px 8px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .rulesBtn {
+    font-size: 10px;
+    padding: 5px 8px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+}
