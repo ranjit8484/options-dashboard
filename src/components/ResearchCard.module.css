@@ -742,3 +742,91 @@
   background: rgba(245,158,11,.06);
   border-radius: 3px;
 }
+
+@media (max-width: 600px) {
+
+  /* Full screen card on mobile */
+  .backdrop {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .card {
+    width: 100%;
+    max-width: 100%;
+    height: 92vh;
+    border-radius: 16px 16px 0 0;
+    overflow-y: auto;
+  }
+
+  /* Compact card header */
+  .cardHeader {
+    padding: 10px 12px;
+    gap: 6px;
+  }
+
+  .cardTicker {
+    font-size: 18px;
+  }
+
+  .cardPrice {
+    font-size: 16px;
+  }
+
+  /* Scrollable tab nav */
+  .tabNav {
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    padding: 0 8px;
+    gap: 2px;
+  }
+
+  .tabNav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tabBtn {
+    font-size: 11px;
+    padding: 8px 10px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* Compact tab body */
+  .tabBody {
+    padding: 10px;
+  }
+
+  /* Trade metrics wrap on mobile */
+  .tradeMetrics {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  /* Compact why rows */
+  .whyRow {
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 0;
+  }
+
+  .whyLabel {
+    font-size: 9px;
+    min-width: unset;
+  }
+
+  /* Checklist items */
+  .checkLabel {
+    min-width: 90px;
+    font-size: 10px;
+  }
+
+  .checkDetail {
+    font-size: 10px;
+  }
+
+  /* IV bar compact */
+  .ivBar {
+    padding: 6px 10px;
+  }
+}

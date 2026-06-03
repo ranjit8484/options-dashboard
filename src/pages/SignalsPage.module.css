@@ -500,3 +500,76 @@
   color: var(--red);
   font-weight: 700;
 }
+
+@media (max-width: 600px) {
+
+  /* Hide W/D/4H/1H columns on mobile
+     Show only Ticker, Thesis, Trade */
+  .tableWrap {
+    overflow-x: hidden;
+  }
+
+  /* Hide signal chip columns */
+  table th:nth-child(6),
+  table th:nth-child(7),
+  table th:nth-child(8),
+  table th:nth-child(9),
+  table td:nth-child(6),
+  table td:nth-child(7),
+  table td:nth-child(8),
+  table td:nth-child(9) {
+    display: none;
+  }
+
+  /* Hide bucket column */
+  table th:nth-child(2),
+  table td:nth-child(2) {
+    display: none;
+  }
+
+  /* Compact table cells */
+  table td, table th {
+    padding: 6px 4px;
+    font-size: 11px;
+  }
+
+  /* Truncate description text */
+  .sigDesc {
+    display: none;
+  }
+
+  /* Compact search bar */
+  .searchBar {
+    padding: 8px;
+    gap: 6px;
+  }
+
+  .searchInput {
+    font-size: 13px;
+    min-width: 0;
+  }
+
+  /* Portfolio bar wraps */
+  .portfolioBar {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px;
+  }
+
+  /* Tier dividers full width */
+  .tierDivider td {
+    padding: 4px 8px;
+  }
+
+  /* Compact filter row */
+  .filterRow {
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 6px 8px;
+  }
+
+  .filterSelect {
+    font-size: 11px;
+    padding: 4px 6px;
+  }
+}

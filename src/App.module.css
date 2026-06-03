@@ -176,3 +176,37 @@
   border-top: 1px solid var(--border2);
   letter-spacing: .03em;
 }
+
+@media (max-width: 600px) {
+  /* Compact header */
+  .header {
+    padding: 6px 10px;
+    flex-wrap: nowrap;
+    gap: 4px;
+  }
+
+  /* Hide timestamps on mobile */
+  .headerMeta,
+  .sheetTime,
+  .pricesTime,
+  .signalsTime {
+    display: none;
+  }
+
+  /* Smaller header buttons */
+  .refreshBtn {
+    font-size: 10px;
+    padding: 4px 8px;
+  }
+
+  /* Hide Sheet and Prices buttons — less used */
+  .headerRight {
+    gap: 4px;
+  }
+
+  /* Compact tab nav */
+  .tabNav {
+    font-size: 12px;
+    padding: 0 8px;
+  }
+}
