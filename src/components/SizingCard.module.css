@@ -1,0 +1,120 @@
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin: 8px 14px 12px;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg3);
+  border-bottom: 1px solid var(--border2);
+  flex-wrap: wrap;
+}
+
+.icon { font-size: 13px; }
+
+.title {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+}
+
+.total {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+}
+
+.conviction {
+  font-size: 11px;
+  color: var(--text2);
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border2);
+  font-family: var(--mono);
+}
+
+.rows { padding: 6px 0; }
+
+.row {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border2);
+}
+
+.row:last-child { border-bottom: none; }
+
+.row.zero { opacity: 0.5; }
+
+.rowLabel {
+  font-size: 11px;
+  color: var(--text2);
+}
+
+.rowColl {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  white-space: nowrap;
+}
+
+.rowMax {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ok   { color: var(--green); }
+.none { color: var(--text3); }
+
+.note {
+  font-size: 10px;
+  color: var(--amber);
+  margin-top: 2px;
+}
+
+.primary {
+  border-left: 2px solid var(--accent);
+}
+
+.primaryBadge {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--accent2);
+  background: rgba(99,102,241,.12);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.collBlock {
+  background: rgba(239,68,68,.05);
+  border-left: 2px solid var(--red) !important;
+}
+
+.collWarn {
+  background: rgba(245,158,11,.05);
+  border-left: 2px solid var(--amber) !important;
+}
+
+.rowTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rowSub {
+  font-size: 10px;
+  color: var(--text3);
+  margin-top: 2px;
+}
+
+.noteBlock { color: var(--red) !important; }
+.noteWarn  { color: var(--amber) !important; }

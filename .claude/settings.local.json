@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(curl -s \"http://localhost:5173/api/exec\")",
+      "Bash(curl -sL \"http://localhost:5173/api/exec\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(python3 -c ' *)"
+    ]
+  }
+}

@@ -1,0 +1,292 @@
+.page { padding: 0; }
+
+.empty {
+  text-align: center;
+  padding: 60px 0;
+  font-size: 13px;
+  color: var(--text3);
+  font-family: var(--mono);
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 600px) {
+  .summaryGrid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.statCard {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+}
+
+.statLabel {
+  font-size: 10px;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: 5px;
+}
+
+.statVal {
+  font-family: var(--mono);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.ratioWarn {
+  background: rgba(239,68,68,.08);
+  border: 1px solid rgba(239,68,68,.25);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--red);
+  margin-bottom: 16px;
+  font-weight: 600;
+}
+
+.twoCol {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 700px) {
+  .twoCol { grid-template-columns: 1fr; }
+}
+
+.panel {
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.panelHead {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  padding: 10px 14px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.table th {
+  text-align: left;
+  padding: 6px 14px;
+  font-size: 10px;
+  color: var(--text3);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  border-bottom: 1px solid var(--border2);
+}
+
+.table td {
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--border2);
+  color: var(--text2);
+}
+
+.table tr:last-child td { border-bottom: none; }
+
+.mono  { font-family: var(--mono); }
+.bold  { font-weight: 700; color: var(--text); }
+.pos   { color: var(--green); font-weight: 700; }
+.neg   { color: var(--red);   font-weight: 700; }
+.notes { font-size: 11px; color: var(--text3); max-width: 180px; }
+
+/* ── Slicer bar ──────────────────────────────────────────────────── */
+.slicerBar {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+
+.slicerGroup { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+
+.slicerLabel {
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+  color: var(--text3); text-transform: uppercase; letter-spacing: .08em;
+  min-width: 60px; padding-top: 5px;
+}
+
+.pills { display: flex; flex-wrap: wrap; gap: 5px; }
+
+.pill {
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  padding: 4px 10px; border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: var(--bg3); color: var(--text3);
+  cursor: pointer; transition: all .12s;
+}
+.pill:hover { border-color: var(--text3); color: var(--text2); }
+
+.pillActive {
+  background: var(--accent); border-color: var(--accent);
+  color: #fff; box-shadow: 0 0 8px rgba(99,102,241,.3);
+}
+
+.pillTicker {
+  background: var(--blue-dim); border-color: var(--blue);
+  color: var(--blue);
+}
+
+.clearBtn {
+  font-family: var(--mono); font-size: 10px;
+  padding: 4px 8px; border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent; color: var(--text3);
+  cursor: pointer;
+}
+.clearBtn:hover { color: var(--red); border-color: var(--red); }
+
+/* ── Charts ──────────────────────────────────────────────────────── */
+.chartsRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 800px) {
+  .chartsRow { grid-template-columns: 1fr; }
+}
+
+.chartPanel {
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.chartHead {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  padding: 8px 12px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chartSub {
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--mono);
+  text-transform: none;
+}
+
+/* ── Insights ────────────────────────────────────────────────────── */
+.insightsPanel {
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-top: 12px;
+}
+
+.insightRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 14px;
+  border-top: 1px solid var(--border2);
+}
+
+.insightIcon { font-size: 14px; min-width: 20px; }
+
+.insightText {
+  font-size: 12px;
+  line-height: 1.5;
+  flex: 1;
+}
+
+.tradeRow {
+  border-bottom: 1px solid var(--border2);
+  transition: background .1s;
+}
+.tradeRow:hover { background: var(--bg3); }
+.tradeRow:last-child td { border-bottom: none; }
+
+.tdDate {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  padding: 10px 14px;
+  white-space: nowrap;
+}
+
+.tdTicker {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: .02em;
+}
+
+.tdType {
+  font-size: 11px;
+  color: var(--text2);
+  white-space: nowrap;
+}
+
+.tdMetric {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 10px 14px;
+}
+
+.tdLbl {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: .07em;
+}
+
+.tdVal {
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.tdNotes {
+  font-size: 11px;
+  color: var(--text3);
+  padding: 10px 14px;
+  max-width: 160px;
+}
+
+.pos { color: var(--green); }
+.neg { color: var(--red);   }

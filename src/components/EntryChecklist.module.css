@@ -1,0 +1,115 @@
+.checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/* Banner */
+.bannerGreen, .bannerAmber, .bannerRed {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+}
+.bannerGreen  { background: rgba(34,197,94,.1); }
+.bannerAmber  { background: rgba(245,158,11,.1); }
+.bannerRed    { background: rgba(239,68,68,.08); }
+
+.bannerIcon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+.bannerGreen .bannerIcon  { color: var(--green); }
+.bannerAmber .bannerIcon  { color: var(--amber); }
+.bannerRed   .bannerIcon  { color: var(--red);   }
+
+.bannerText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bannerTitle {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+.bannerGreen .bannerTitle { color: var(--green); }
+.bannerAmber .bannerTitle { color: var(--amber); }
+.bannerRed   .bannerTitle { color: var(--red);   }
+
+.bannerSub {
+  font-size: 11px;
+  color: var(--text3);
+}
+
+/* Sections */
+.section {
+  border-top: 1px solid var(--border);
+  padding: 6px 0;
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 14px;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text3);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.sectionGo      { color: var(--green); font-size: 10px; }
+.sectionStop    { color: var(--red);   font-size: 10px; }
+.sectionCaution { color: var(--amber); font-size: 10px; }
+
+/* Check items */
+.checkItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 14px;
+  transition: background .1s;
+}
+
+.checkItem:hover { background: var(--bg2); }
+
+.checkIcon {
+  font-size: 12px;
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+}
+
+.check_green .checkIcon { color: var(--green); }
+.check_amber .checkIcon { color: var(--amber); }
+.check_red   .checkIcon { color: var(--red);   }
+
+.checkLabel {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text2);
+  min-width: 120px;
+  flex-shrink: 0;
+}
+
+.check_red   .checkLabel { color: var(--red);   }
+.check_amber .checkLabel { color: var(--amber); }
+.check_green .checkLabel { color: var(--green); }
+
+.checkDetail {
+  font-size: 11px;
+  color: var(--text3);
+  flex: 1;
+}
+
+.check_green .checkDetail { color: var(--text2); }

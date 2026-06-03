@@ -1,0 +1,179 @@
+.platBar {
+  display: flex;
+  align-items: center;
+  padding: 8px 0 10px;
+  border-bottom: 1px solid var(--border2);
+  margin-bottom: 14px;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.heading {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+}
+
+.count {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  background: var(--bg3);
+  padding: 1px 7px;
+  border-radius: 999px;
+}
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.divider {
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+}
+
+.pillGroup {
+  display: flex;
+  gap: 4px;
+}
+
+.pill {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 16px;
+  border-radius: 999px;
+  border: 2px solid var(--border);
+  background: var(--bg2);
+  color: var(--text3);
+  cursor: pointer;
+  transition: all .12s;
+  letter-spacing: .02em;
+}
+
+.pill:hover { border-color: var(--text3); color: var(--text2); }
+
+/* Active states — each has a strong unique color */
+.onAll  { background: #e8eaf0 !important; color: #0a0c0f !important; border-color: #e8eaf0 !important; box-shadow: 0 0 12px rgba(232,234,240,.2); }
+.onRh   { background: var(--rh)  !important; color: #fff !important; border-color: var(--rh)  !important; box-shadow: 0 0 12px rgba(249,115,22,.35); }
+.onFid  { background: var(--fid) !important; color: #fff !important; border-color: var(--fid) !important; box-shadow: 0 0 12px rgba(59,130,246,.35); }
+.onSort { background: var(--accent) !important; color: #fff !important; border-color: var(--accent) !important; box-shadow: 0 0 12px rgba(99,102,241,.35); }
+
+.sortBar {
+  background: var(--bg1);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+
+.sortBarHeader {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border2);
+}
+
+.sortBarIcon { font-size: 14px; }
+
+.sortBarTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+  letter-spacing: .01em;
+}
+
+.sortBarCount {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text3);
+  background: var(--bg3);
+  padding: 1px 9px;
+  border-radius: 999px;
+}
+
+.sortBarFilters {
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.filterRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filterLabel {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  font-family: var(--mono);
+  min-width: 58px;
+}
+
+.pills {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border);
+  background: var(--bg3);
+  color: var(--text3);
+  cursor: pointer;
+  transition: all .12s;
+}
+
+.pill:hover {
+  border-color: var(--text3);
+  color: var(--text2);
+}
+
+.pillActive {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 8px rgba(99,102,241,.3);
+}
+
+.pillSort {
+  background: #7b3fc4;
+  border-color: #7b3fc4;
+  color: #fff;
+  box-shadow: 0 0 8px rgba(123,63,196,.3);
+}

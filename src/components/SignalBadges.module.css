@@ -1,0 +1,310 @@
+.wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0 6px;
+  border-top: 1px solid var(--border2);
+  margin-top: 8px;
+}
+
+.loadingText {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+}
+
+.divider {
+  width: 1px;
+  height: 36px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+/* ── Strategy badge ──────────────────────────────────────────────── */
+.strategy {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1.5px solid transparent;
+  white-space: nowrap;
+}
+
+.buyCall {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.buyPut {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.spread {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #60a5fa;
+}
+
+.naked {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.close {
+  background: rgba(99, 102, 241, 0.12);
+  border-color: var(--accent);
+  color: var(--accent2);
+}
+
+/* ── Entry badge ─────────────────────────────────────────────────── */
+.entry {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1.5px solid transparent;
+  white-space: nowrap;
+}
+
+.entryWait  { background: var(--bg2); border-color: var(--border); color: var(--text3); }
+
+.clickable  { cursor: pointer; }
+.clickable:hover { filter: brightness(1.15); }
+
+.entryLong  {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: var(--green);
+  color: var(--green);
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.2);
+}
+
+.entryShort {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: var(--red);
+  color: var(--red);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.2);
+}
+
+.entryWatch {
+  background: var(--amber-dim);
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.entrySell {
+  background: rgba(249, 115, 22, 0.15);
+  border-color: #f97316;
+  color: #f97316;
+  box-shadow: 0 0 10px rgba(249, 115, 22, 0.18);
+}
+
+.entryExit {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: var(--accent);
+  color: var(--accent2);
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.2);
+}
+
+/* ── TF badges ───────────────────────────────────────────────────── */
+.row {
+  display: flex;
+  gap: 6px;
+}
+
+.chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  gap: 2px;
+  min-width: 48px;
+}
+
+.tf {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text3);
+}
+
+.symbol {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* ── Chip variants ───────────────────────────────────────────────── */
+.none      { background: var(--bg2); border-color: var(--border); }
+
+.buy       { background: var(--green-dim); border-color: rgba(34,197,94,.22); }
+.buy .tf   { color: rgba(34,197,94,.7); }
+
+.strongBuy { background: rgba(34,197,94,.18); border-color: var(--green); box-shadow: 0 0 8px rgba(34,197,94,.2); }
+.strongBuy .tf { color: rgba(34,197,94,.8); }
+
+.sell      { background: var(--red-dim); border-color: rgba(239,68,68,.22); }
+.sell .tf  { color: rgba(239,68,68,.7); }
+
+.strongSell { background: rgba(239,68,68,.18); border-color: var(--red); box-shadow: 0 0 8px rgba(239,68,68,.2); }
+.strongSell .tf { color: rgba(239,68,68,.8); }
+
+/* ── Modal ───────────────────────────────────────────────────────── */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.modal {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  width: 100%;
+  max-width: 620px;
+  box-shadow: 0 32px 64px rgba(0,0,0,.6);
+  overflow: hidden;
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg3);
+}
+
+.modalTicker {
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.05em;
+}
+
+.modalDash { color: var(--text3); }
+
+.modalTitle {
+  font-family: var(--mono);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent2);
+}
+
+.modalTrade {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text3);
+}
+
+.modalClose {
+  font-size: 16px;
+  color: var(--text3);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  line-height: 1;
+}
+.modalClose:hover { color: var(--text); background: var(--bg4); }
+
+.modalBody {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 75vh;
+  overflow-y: auto;
+}
+
+.modalSection {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-top: 14px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border2);
+}
+.modalSection:first-child { margin-top: 0; }
+
+.checkRow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 0;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.checkIcon {
+  font-size: 13px;
+  font-weight: 700;
+  width: 14px;
+  flex-shrink: 0;
+}
+
+.checkLabel {
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  min-width: 130px;
+  flex-shrink: 0;
+}
+
+.checkDetail { color: var(--text2); font-size: 12px; }
+
+.checkOk   .checkIcon  { color: var(--green); }
+.checkOk   .checkLabel { color: var(--text); }
+.checkWarn .checkIcon  { color: var(--amber); }
+.checkWarn .checkLabel { color: var(--text2); }
+.checkFail .checkIcon  { color: var(--red); }
+.checkFail .checkLabel { color: var(--text2); }
+
+.modalReason {
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--text2);
+  line-height: 1.6;
+  padding: 4px 0;
+}
+
+.modalUpgrade {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--amber);
+  padding: 8px 12px;
+  background: var(--amber-dim);
+  border-radius: 6px;
+  border-left: 3px solid var(--amber);
+  line-height: 1.6;
+}
+
+.since {
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 0.7;
+  margin-top: 1px;
+  letter-spacing: 0;
+  color: inherit;
+}

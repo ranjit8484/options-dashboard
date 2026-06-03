@@ -1,0 +1,29 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/exec",
+      "destination": "/api/exec"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ]
+    }
+  ],
+  "functions": {
+    "api/exec.js": {
+      "memory": 256,
+      "maxDuration": 30
+    }
+  }
+}

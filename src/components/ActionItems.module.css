@@ -1,0 +1,229 @@
+.panel {
+  background: var(--bg1);
+  border: 1.5px solid rgba(245,158,11,.25);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+
+.header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(245,158,11,.06);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.icon { font-size: 14px; }
+
+.title {
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--amber);
+  flex: 1;
+}
+
+.count {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--rh);
+  color: #fff;
+  padding: 1px 8px;
+  border-radius: 999px;
+}
+
+.chevron {
+  font-size: 11px;
+  color: var(--amber);
+}
+
+.body {}
+
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 14px;
+  border-top: 1px solid rgba(245,158,11,.1);
+}
+
+.item.danger { border-left: 2px solid var(--red); }
+.item.watch  { border-left: 2px solid var(--amber); }
+.item.safe   { border-left: 2px solid var(--green); }
+
+.itemIcon { font-size: 14px; min-width: 18px; margin-top: 1px; }
+
+.itemText {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+
+.itemAction {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-xs);
+}
+
+.action_danger { background: var(--red-dim);   color: var(--red);   }
+.action_watch  { background: var(--amber-dim); color: var(--amber); }
+.action_safe   { background: var(--green-dim); color: var(--green); }
+
+.empty {
+  padding: 12px 14px;
+  font-size: 12px;
+  color: var(--green);
+  border-top: 1px solid var(--border2);
+}
+
+.leapPanel {
+  border-color: rgba(99,102,241,.25);
+}
+
+.leapPanel .header {
+  background: rgba(99,102,241,.06);
+}
+
+.leapPanel .title {
+  color: var(--accent2);
+}
+
+.countUrgent {
+  background: var(--red) !important;
+  color: #fff !important;
+}
+
+.countGood {
+  background: var(--green-dim);
+  color: var(--green);
+}
+
+.allGood {
+  font-size: 10px;
+  color: var(--green);
+  font-family: var(--mono);
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+.itemBody {
+  flex: 1;
+  min-width: 0;
+}
+
+.itemSub {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+  margin-top: 2px;
+  margin-bottom: 2px;
+}
+
+.leapItem {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border2);
+}
+
+.leapItem.danger { background: rgba(239,68,68,.03); }
+.leapItem.watch  { background: rgba(245,158,11,.03); }
+.leapItem.safe   { background: transparent; }
+
+.leapItemHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.leapTicker {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  min-width: 36px;
+}
+
+.leapTitle {
+  font-size: 12px;
+  color: var(--text2);
+  flex: 1;
+}
+
+.leapAction {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.leapSub {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-left: 24px;
+}
+
+.leapMetric {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 80px;
+}
+
+.leapMetricLabel {
+  font-size: 9px;
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  font-family: var(--mono);
+}
+
+.leapMetricVal {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.leapProgressWrap {
+  flex: 1;
+  min-width: 120px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.leapProgressBar {
+  flex: 1;
+  height: 5px;
+  background: var(--bg3);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.leapProgress {
+  height: 5px;
+  border-radius: 999px;
+  transition: width .3s;
+}
+
+.leapProgressPct {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text3);
+  white-space: nowrap;
+}

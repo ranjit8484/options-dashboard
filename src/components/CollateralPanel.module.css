@@ -1,0 +1,147 @@
+.panel {
+  background: var(--bg1);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+
+.header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--bg2);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.icon { font-size: 14px; }
+
+.title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+}
+
+.totalCompact {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.warnBadge {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--red);
+  color: #fff;
+  padding: 1px 8px;
+  border-radius: 999px;
+  min-width: 22px;
+  text-align: center;
+}
+
+.okBadge {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--green-dim);
+  color: var(--green);
+  padding: 1px 8px;
+  border-radius: 999px;
+}
+
+.chevron { font-size: 11px; color: var(--text3); }
+
+.body { padding: 12px 14px; }
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.ticker {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  width: 46px;
+  color: var(--text);
+}
+
+.barWrap {
+  flex: 1;
+  background: var(--bg3);
+  border-radius: 999px;
+  height: 6px;
+  overflow: hidden;
+}
+
+.bar {
+  height: 6px;
+  border-radius: 999px;
+  transition: width .4s ease;
+}
+
+.barOk   { background: var(--green); }
+.barWarn { background: var(--amber); }
+.barOver { background: var(--red); }
+
+.amt {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text2);
+  width: 50px;
+  text-align: right;
+}
+
+.pct {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text3);
+  width: 30px;
+  text-align: right;
+}
+
+.note {
+  font-size: 10px;
+  color: var(--text3);
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border2);
+  line-height: 1.5;
+}
+
+.warn {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--red);
+  margin-top: 6px;
+}
+
+.ok {
+  font-size: 11px;
+  color: var(--green);
+  margin-top: 6px;
+}
+
+.platTag {
+  font-size: 9px;
+  font-family: var(--mono);
+  font-weight: 700;
+  background: var(--blue-dim);
+  color: var(--blue);
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.pctBlock { color: var(--red);   font-weight: 700; }
+.pctWarn  { color: var(--amber); font-weight: 700; }
