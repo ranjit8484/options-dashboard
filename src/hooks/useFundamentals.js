@@ -1,4 +1,46 @@
 const CACHE_KEY   = 'g2_fundamentals_v1';
+const CONTEXT_CACHE_KEY = 'g2_context_v1';
+const CONTEXT_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+function loadContextCache() {
+  try {
+    const raw = localStorage.getItem(
+      CONTEXT_CACHE_KEY
+    );
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    const now = Date.now();
+    const clean = {};
+    Object.entries(parsed).forEach(([k, v]) => {
+      if (now - (v._ts || 0) < CONTEXT_CACHE_TTL)
+        clean[k] = v;
+    });
+    return clean;
+  } catch { return {}; }
+}
+
+function saveContextCache(cache) {
+  try {
+    localStorage.setItem(
+      CONTEXT_CACHE_KEY,
+      JSON.stringify(cache)
+    );
+  } catch {}
+}
+
+async function fetchContext(ticker) {
+  try {
+    const res = await fetch(
+      `/api/exec?action=context&tickers=${ticker}`
+    );
+    if (!res.ok) return null;
+    const json = await res.json();
+    const data = json.context?.[ticker];
+    if (!data) return null;
+    data._ts = Date.now();
+    return data;
+  } catch { return null; }
+}
 const CACHE_TTL   = 6 * 60 * 60 * 1000; // 6 hours
 
 function loadCache() {
@@ -233,6 +275,41 @@ export function useFundamentals(ticker) {
       if (!cancelled && result) {
         const updated = { ...loadCache(), [ticker]: result };
         saveCache(updated);
+        setData(result);
+      }
+      if (!cancelled) setLoading(false);
+    }
+
+    load();
+    return () => { cancelled = true; };
+  }, [ticker]);
+
+  return { data, loading };
+}
+
+export function useContext(ticker) {
+  const [data,    setData]    = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!ticker) return;
+    let cancelled = false;
+
+    async function load() {
+      // Check cache first
+      const cache = loadContextCache();
+      if (cache[ticker]) {
+        setData(cache[ticker]);
+        return;
+      }
+      setLoading(true);
+      const result = await fetchContext(ticker);
+      if (!cancelled && result) {
+        const updated = {
+          ...loadContextCache(),
+          [ticker]: result
+        };
+        saveContextCache(updated);
         setData(result);
       }
       if (!cancelled) setLoading(false);

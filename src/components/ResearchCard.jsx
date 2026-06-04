@@ -5,7 +5,8 @@ import {
 } from '../lib/strikeCalc';
 import { loadParams } from '../hooks/useParams';
 import { calcStatus, estPnl, f$ } from '../lib/finance';
-import { useFundamentals, calcBackdrop } from '../hooks/useFundamentals';
+import { useFundamentals, calcBackdrop,
+  useContext } from '../hooks/useFundamentals';
 import { EntryChecklist, useChecklistReady } from './EntryChecklist';
 import styles from './ResearchCard.module.css';
 
@@ -67,6 +68,89 @@ function RecommendedBanner({ conviction, isBull, spot, ticker, params, account, 
       <span className={styles.recTarget}>target close: ${(rec.premium * 0.5).toFixed(2)}</span>
       <span className={styles.recBuffer}>{rec.buffer}% buffer</span>
       <span className={styles.recContracts}>max {rec.maxContracts} contracts</span>
+    </div>
+  );
+}
+
+// ── Context panel ─────────────────────────────────────────────────
+function ContextPanel({ context }) {
+  if (!context) return null;
+
+  const alert  = context.alert;
+  const note   = context.weeklyNote;
+  const guidance = context.tradeGuidance;
+  const earnings = context.earnings;
+
+  // Earnings alert — most urgent
+  const earningsAlert = earnings?.daysAway <= 3
+    ? {
+        level: 'RED',
+        message: `⚠ EARNINGS ${
+          earnings.daysAway === 0 ? 'TODAY'
+          : earnings.daysAway === 1 ? 'TOMORROW'
+          : `IN ${earnings.daysAway} DAYS`
+        } ${earnings.timing || 'after close'}`
+          + ` — ${earnings.expectedMove || ''} move expected`
+      }
+    : earnings?.daysAway <= 14
+    ? {
+        level: 'AMBER',
+        message: `⚠ Earnings in ${earnings.daysAway}d`
+          + ` — elevated risk, size down`
+      }
+    : null;
+
+  const activeAlert = earningsAlert || alert;
+
+  return (
+    <div className={styles.contextPanel}>
+
+      {/* Alert banner */}
+      {activeAlert && (
+        <div className={`${styles.contextAlert}
+          ${activeAlert.level === 'RED'
+            ? styles.contextAlertRed
+            : styles.contextAlertAmber}`}>
+          {activeAlert.message}
+          {guidance?.avoidUntil && (
+            <span className={styles.contextAvoid}>
+              · Avoid until {guidance.avoidUntil}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Weekly note */}
+      {note && (
+        <div className={styles.contextNote}>
+          <span className={styles.contextNoteLabel}>
+            THIS WEEK
+          </span>
+          <span className={styles.contextNoteText}>
+            {note}
+          </span>
+        </div>
+      )}
+
+      {/* Trade guidance */}
+      {guidance?.doNow && (
+        <div className={styles.contextGuidance}>
+          <span className={styles.contextGuidanceLabel}>
+            ACTION
+          </span>
+          <span className={styles.contextGuidanceText}>
+            {guidance.doNow}
+          </span>
+        </div>
+      )}
+
+      {/* Last updated */}
+      {context.lastUpdated && (
+        <div className={styles.contextUpdated}>
+          Context updated {context.lastUpdated}
+        </div>
+      )}
+
     </div>
   );
 }
@@ -1023,6 +1107,7 @@ export function ResearchCard({
   const params  = loadParams();
   const account = (balances?.rh??0) + (balances?.fid??0);
   const { data: fundamentals, loading: fundLoading } = useFundamentals(ticker);
+  const { data: context } = useContext(ticker);
 
   const defaultIv = Math.round(getIV(ticker) * 100);
   const [ivOverride, setIvOverride] = useState(defaultIv);
@@ -1131,6 +1216,7 @@ export function ResearchCard({
         <div className={styles.tabBody}>
           {activeTab==='why' && (
             <div className={styles.tabContent}>
+              <ContextPanel context={context} />
               <FundamentalBackdrop
                 ticker={ticker}
                 isBull={isBull}
@@ -1138,7 +1224,12 @@ export function ResearchCard({
                 fundamentals={fundamentals}
                 loading={fundLoading}
               />
-              <WhySection ticker={ticker} sig={sig} entry={entry} strategy={strategy} />
+              <WhySection
+                ticker={ticker}
+                sig={sig}
+                entry={entry}
+                strategy={strategy}
+              />
             </div>
           )}
           {activeTab==='manage' && (
