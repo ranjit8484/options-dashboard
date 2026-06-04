@@ -381,3 +381,74 @@
     font-size: 9px;
   }
 }
+
+@media (max-width: 600px) {
+  .metricsRow {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+    padding: 8px 0;
+  }
+
+  .metricCol {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .metricLbl {
+    font-size: 9px;
+  }
+
+  .metricVal {
+    font-size: 12px;
+  }
+
+  .exitLine {
+    margin-top: 6px;
+  }
+
+  .exitMain {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .exitDetail {
+    font-size: 10px;
+    padding-left: 0;
+  }
+
+  .rowHeader {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .rowName {
+    font-size: 13px;
+  }
+
+  .spreadWidth {
+    font-size: 9px;
+  }
+
+  .headerRow {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .chipsRow {
+    overflow-x: auto;
+    scrollbar-width: none;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .chipsRow::-webkit-scrollbar {
+    display: none;
+  }
+
+  .priceInput {
+    width: 100px;
+    font-size: 18px;
+  }
+}

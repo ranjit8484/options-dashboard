@@ -114,7 +114,9 @@ function ContextPanel({ context }) {
       )}
       {context.thesis?.summary && (
         <div className={styles.contextRow}>
-          <span className={styles.contextLbl}>THESIS</span>
+          <span className={styles.contextLbl}>
+            THESIS
+          </span>
           <span className={styles.contextVal}>
             {context.thesis.summary}
           </span>
@@ -122,33 +124,49 @@ function ContextPanel({ context }) {
       )}
       {context.thesis?.keyRisks?.length > 0 && (
         <div className={styles.contextRow}>
-          <span className={styles.contextLbl}>RISKS</span>
+          <span className={styles.contextLbl}>
+            RISKS
+          </span>
           <span className={styles.contextVal}>
             {context.thesis.keyRisks.join(' · ')}
           </span>
         </div>
       )}
-      {context.tradeGuidance?.postEarnings?.ifMiss && (
+      {context.tradeGuidance?.postEarnings
+        ?.ifMiss && (
         <div className={styles.contextRow}>
-          <span className={styles.contextLbl}>IF MISS</span>
-          <span className={`${styles.contextVal} ${styles.contextGreen}`}>
-            {context.tradeGuidance.postEarnings.ifMiss}
+          <span className={styles.contextLbl}>
+            IF MISS
+          </span>
+          <span className={`${styles.contextVal}
+            ${styles.contextGreen}`}>
+            {context.tradeGuidance
+              .postEarnings.ifMiss}
           </span>
         </div>
       )}
-      {context.tradeGuidance?.postEarnings?.ifBeat && (
+      {context.tradeGuidance?.postEarnings
+        ?.ifBeat && (
         <div className={styles.contextRow}>
-          <span className={styles.contextLbl}>IF BEAT</span>
+          <span className={styles.contextLbl}>
+            IF BEAT
+          </span>
           <span className={styles.contextVal}>
-            {context.tradeGuidance.postEarnings.ifBeat}
+            {context.tradeGuidance
+              .postEarnings.ifBeat}
           </span>
         </div>
       )}
-      {context.tradeGuidance?.postEarnings?.watchFor && (
+      {context.tradeGuidance?.postEarnings
+        ?.watchFor && (
         <div className={styles.contextRow}>
-          <span className={styles.contextLbl}>WATCH</span>
-          <span className={`${styles.contextVal} ${styles.contextAmber}`}>
-            {context.tradeGuidance.postEarnings.watchFor}
+          <span className={styles.contextLbl}>
+            WATCH
+          </span>
+          <span className={`${styles.contextVal}
+            ${styles.contextAmber}`}>
+            {context.tradeGuidance
+              .postEarnings.watchFor}
           </span>
         </div>
       )}
