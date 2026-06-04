@@ -104,53 +104,59 @@ function ContextPanel({ context }) {
 
   return (
     <div className={styles.contextPanel}>
-
-      {/* Alert banner */}
       {activeAlert && (
         <div className={`${styles.contextAlert}
           ${activeAlert.level === 'RED'
             ? styles.contextAlertRed
             : styles.contextAlertAmber}`}>
           {activeAlert.message}
-          {guidance?.avoidUntil && (
-            <span className={styles.contextAvoid}>
-              · Avoid until {guidance.avoidUntil}
-            </span>
-          )}
         </div>
       )}
-
-      {/* Weekly note */}
-      {note && (
-        <div className={styles.contextNote}>
-          <span className={styles.contextNoteLabel}>
-            THIS WEEK
-          </span>
-          <span className={styles.contextNoteText}>
-            {note}
+      {context.thesis?.summary && (
+        <div className={styles.contextRow}>
+          <span className={styles.contextLbl}>THESIS</span>
+          <span className={styles.contextVal}>
+            {context.thesis.summary}
           </span>
         </div>
       )}
-
-      {/* Trade guidance */}
-      {guidance?.doNow && (
-        <div className={styles.contextGuidance}>
-          <span className={styles.contextGuidanceLabel}>
-            ACTION
-          </span>
-          <span className={styles.contextGuidanceText}>
-            {guidance.doNow}
+      {context.thesis?.keyRisks?.length > 0 && (
+        <div className={styles.contextRow}>
+          <span className={styles.contextLbl}>RISKS</span>
+          <span className={styles.contextVal}>
+            {context.thesis.keyRisks.join(' · ')}
           </span>
         </div>
       )}
-
-      {/* Last updated */}
+      {context.tradeGuidance?.postEarnings?.ifMiss && (
+        <div className={styles.contextRow}>
+          <span className={styles.contextLbl}>IF MISS</span>
+          <span className={`${styles.contextVal} ${styles.contextGreen}`}>
+            {context.tradeGuidance.postEarnings.ifMiss}
+          </span>
+        </div>
+      )}
+      {context.tradeGuidance?.postEarnings?.ifBeat && (
+        <div className={styles.contextRow}>
+          <span className={styles.contextLbl}>IF BEAT</span>
+          <span className={styles.contextVal}>
+            {context.tradeGuidance.postEarnings.ifBeat}
+          </span>
+        </div>
+      )}
+      {context.tradeGuidance?.postEarnings?.watchFor && (
+        <div className={styles.contextRow}>
+          <span className={styles.contextLbl}>WATCH</span>
+          <span className={`${styles.contextVal} ${styles.contextAmber}`}>
+            {context.tradeGuidance.postEarnings.watchFor}
+          </span>
+        </div>
+      )}
       {context.lastUpdated && (
         <div className={styles.contextUpdated}>
-          Context updated {context.lastUpdated}
+          Updated {context.lastUpdated}
         </div>
       )}
-
     </div>
   );
 }

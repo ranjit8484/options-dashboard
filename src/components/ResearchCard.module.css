@@ -758,10 +758,6 @@
   font-family: var(--mono);
   font-size: 12px;
   font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
 }
 
 .contextAlertRed {
@@ -776,58 +772,37 @@
   border-left: 3px solid var(--amber);
 }
 
-.contextAvoid {
-  font-size: 10px;
-  opacity: .8;
-}
-
-.contextNote {
-  padding: 8px 14px;
+.contextRow {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  gap: 10px;
+  padding: 6px 14px;
   border-top: 1px solid var(--border);
-  background: var(--bg2);
+  align-items: flex-start;
 }
 
-.contextNoteLabel {
+.contextLbl {
   font-family: var(--mono);
   font-size: 9px;
   font-weight: 700;
   color: var(--text3);
-  letter-spacing: .08em;
+  letter-spacing: .07em;
+  min-width: 52px;
+  flex-shrink: 0;
+  padding-top: 2px;
 }
 
-.contextNoteText {
+.contextVal {
   font-size: 11px;
   color: var(--text2);
   line-height: 1.5;
+  flex: 1;
 }
 
-.contextGuidance {
-  padding: 8px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  border-top: 1px solid var(--border);
-}
-
-.contextGuidanceLabel {
-  font-family: var(--mono);
-  font-size: 9px;
-  font-weight: 700;
-  color: var(--text3);
-  letter-spacing: .08em;
-}
-
-.contextGuidanceText {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text);
-}
+.contextGreen { color: var(--green) !important; }
+.contextAmber { color: var(--amber) !important; }
 
 .contextUpdated {
-  padding: 4px 14px;
+  padding: 3px 14px;
   font-size: 9px;
   color: var(--text3);
   font-family: var(--mono);

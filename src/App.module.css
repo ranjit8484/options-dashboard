@@ -178,43 +178,9 @@
 }
 
 @media (max-width: 600px) {
-  /* Compact header */
   .header {
-    padding: 6px 10px;
-    flex-wrap: nowrap;
-    gap: 4px;
-  }
-
-  /* Hide timestamps on mobile */
-  .headerMeta,
-  .sheetTime,
-  .pricesTime,
-  .signalsTime {
-    display: none;
-  }
-
-  /* Smaller header buttons */
-  .refreshBtn {
-    font-size: 10px;
     padding: 4px 8px;
-  }
-
-  /* Hide Sheet and Prices buttons — less used */
-  .headerRight {
     gap: 4px;
-  }
-
-  /* Compact tab nav */
-  .tabNav {
-    font-size: 12px;
-    padding: 0 8px;
-  }
-}
-
-@media (max-width: 600px) {
-  .header {
-    padding: 6px 10px;
-    gap: 6px;
     flex-wrap: nowrap;
     align-items: center;
   }
@@ -231,13 +197,21 @@
     flex-shrink: 0;
   }
 
+  .logo {
+    font-size: 16px;
+    padding: 3px 6px;
+    flex-shrink: 0;
+  }
+
   .headerActions {
     overflow-x: auto;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
     flex-wrap: nowrap;
-    gap: 4px;
+    gap: 3px;
     flex: 1;
+    display: flex;
+    align-items: center;
   }
 
   .headerActions::-webkit-scrollbar {
@@ -245,16 +219,18 @@
   }
 
   .refreshBtn {
-    font-size: 10px;
-    padding: 5px 8px;
+    font-size: 9px;
+    padding: 4px 7px;
     white-space: nowrap;
     flex-shrink: 0;
+    min-width: unset;
   }
 
   .rulesBtn {
-    font-size: 10px;
-    padding: 5px 8px;
+    font-size: 9px;
+    padding: 4px 7px;
     white-space: nowrap;
     flex-shrink: 0;
+    min-width: unset;
   }
 }

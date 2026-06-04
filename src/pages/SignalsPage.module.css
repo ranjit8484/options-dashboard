@@ -573,3 +573,51 @@
     padding: 4px 6px;
   }
 }
+
+@media (max-width: 600px) {
+  /* Compress table rows */
+  table td {
+    padding: 8px 4px;
+    font-size: 11px;
+  }
+
+  /* Thesis column — single line, no wrap */
+  table td:nth-child(3) {
+    white-space: nowrap;
+    font-size: 10px;
+  }
+
+  /* Trade column — truncate gracefully */
+  table td:nth-child(4) {
+    max-width: 120px;
+  }
+
+  /* Trade badge — smaller */
+  .tradeBadge {
+    font-size: 9px;
+    padding: 2px 5px;
+    white-space: nowrap;
+  }
+
+  /* Exit badge — smaller */
+  .exitBadge {
+    font-size: 8px;
+    padding: 1px 4px;
+  }
+
+  /* Tier divider compact */
+  .tierDividerLabel {
+    font-size: 9px;
+  }
+
+  /* Hide description text on mobile */
+  .sigDesc {
+    display: none;
+  }
+
+  /* Readiness badge */
+  .tierBadge {
+    font-size: 8px;
+    padding: 1px 5px;
+  }
+}
