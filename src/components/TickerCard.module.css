@@ -384,44 +384,30 @@
 
 @media (max-width: 600px) {
 
-  /* Stack row vertically instead of side by side */
+  /* Stack row: position info on top, metrics below */
   .row {
-    flex-direction: column;
-    gap: 0;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
   }
 
-  /* Left section — full width */
   .rowLeft {
-    width: 100%;
-    padding-bottom: 6px;
+    padding: 8px 12px;
   }
 
-  /* Metrics — full width, 2x2 grid */
+  /* Metrics: 2x2 grid below position info */
   .rowMetrics {
-    width: 100%;
-    display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 1px;
-    background: var(--border);
     border-top: 1px solid var(--border);
+    min-width: unset;
   }
 
-  /* Each metric cell */
   .metricCol {
-    background: var(--bg);
     padding: 6px 10px;
-    border-left: none;
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .metricCol:first-child {
-    border-left: none;
+    min-width: unset;
   }
 
   .metricLbl {
     font-size: 9px;
-    margin-bottom: 2px;
   }
 
   .metricVal {
@@ -432,35 +418,21 @@
     font-size: 14px;
   }
 
-  /* Exit line — compact */
-  .exitLine {
-    margin-top: 4px;
-    padding: 4px 8px;
-  }
-
   .exitMain {
     flex-wrap: wrap;
     gap: 4px;
   }
 
   .exitDetail {
-    font-size: 10px;
     padding-left: 0;
     margin-top: 2px;
   }
 
-  /* Row top — wrap chips */
   .rowTop {
     flex-wrap: wrap;
     gap: 4px;
   }
 
-  .rowName {
-    font-size: 13px;
-    font-weight: 700;
-  }
-
-  /* Chips scroll horizontally */
   .chipsRow {
     overflow-x: auto;
     scrollbar-width: none;
@@ -468,18 +440,14 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  .chipsRow::-webkit-scrollbar {
-    display: none;
-  }
+  .chipsRow::-webkit-scrollbar { display: none; }
 
-  /* Price input */
   .priceInput {
     width: 90px;
     font-size: 16px;
   }
 
-  /* Header row */
-  .headerRow {
+  .headerTop {
     flex-wrap: wrap;
     gap: 6px;
   }
