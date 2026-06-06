@@ -5,7 +5,8 @@ import {
 } from '../config/buckets';
 import { ResearchCard } from '../components/ResearchCard';
 import { loadParams, tickerCollStatus } from '../hooks/useParams';
-import { calcCollateral, calcComposite, calcEntry, calcStrategy } from '../lib/finance';
+import { calcCollateral, calcComposite, calcEntry, calcStrategy,
+  calcCompositeScore } from '../lib/finance';
 import { getLeapExpiries } from '../lib/strikeCalc';
 import styles from './SignalsPage.module.css';
 
@@ -16,88 +17,45 @@ const CONV_ORDER = { full:0, high:1, medium:2, low:3, none:4, exit:5 };
 
 // ── Readiness tier for E19 signal ranking ────────────
 // Returns 0 (best) to 4 (worst) for sorting
-function getReadinessTier(row) {
+function getReadinessTier(row, fundamentals,
+  spot) {
   const { sig } = row;
   if (!sig) return 4;
 
-  const W  = sig.W;
-  const D  = sig.D;
-  const h4 = sig['4H'];
-  const h1 = sig['1H'];
+  // Use composite score for consistent
+  // ranking with ResearchCard
+  const cs = calcCompositeScore({
+    sig,
+    fundamentals: fundamentals ?? null,
+    spot: spot ?? null,
+    marketSig: null
+  });
 
-  const wXs = W?.xs ?? 0;
-  const dXs = D?.xs ?? 0;
+  if (!cs) return 4;
 
-  // Tier 4 — explicit no trade
-  if (sig._strategy?.noTrade === true) return 4;
-  if (wXs === 0 && dXs === 0) return 4;
-
-  const isBull = wXs >= 1;
-  const aligned = (wXs >= 1 && dXs >= 1)
-    || (wXs <= -1 && dXs <= -1);
-
-  // Tier 3 — only one TF or W/D conflict
-  if (!aligned) return wXs !== 0 ? 3 : 4;
-
-  // Extension blocks — cap at tier 3
-  const kijunDist = Math.abs(D?.kijunDist ?? 0);
-  if (kijunDist > 25) return 3;
-
-  // 4H timing signals
-  const h4Xs    = h4?.xs ?? 0;
-  const h4Since = h4?.since ?? 0;
-  const h1Xs    = h1?.xs ?? 0;
-
-  // 4H briefly opposing trend = bounce entry
-  const h4Bounce = (isBull  && h4Xs <= -1 && h4Since <= 8)
-    || (!isBull && h4Xs >= 1  && h4Since <= 8);
-
-  // 4H just turned in trend direction
-  const h4Fresh = Math.abs(h4Xs) >= 1 && h4Since <= 4
-    && ((isBull && h4Xs >= 1) || (!isBull && h4Xs <= -1));
-
-  // 1H confirms trade direction
-  const h1Confirms = (isBull  && h1Xs >= 1)
-    || (!isBull && h1Xs <= -1);
-
-  // MACD confirmation on daily
-  const macdConfirms = (isBull  && D?.macdDir === 'bull')
-    || (!isBull && D?.macdDir === 'bear');
-
-  // RSI in healthy zone
-  const dRsi = D?.rsi ?? 50;
-  const rsiOk = isBull
-    ? dRsi >= 35 && dRsi <= 72
-    : dRsi >= 28 && dRsi <= 65;
-
-  // Tier 0 READY — timing confirmed
-  if (aligned && (h4Bounce || h4Fresh) && h1Confirms
-    && kijunDist <= 20) return 0;
-
-  // Tier 1 WATCH — almost ready, missing one thing
-  if (aligned && (h4Bounce || h4Fresh || h1Confirms)
-    && kijunDist <= 20) return 1;
-
-  // Tier 1 also — MACD + RSI both confirm even
-  // without perfect 4H timing
-  if (aligned && macdConfirms && rsiOk
-    && kijunDist <= 20) return 1;
-
-  // Tier 2 WAIT — aligned but timing not there yet
-  if (aligned && kijunDist <= 20) return 2;
-
-  // Tier 2 also — aligned but slightly extended
-  if (aligned) return 2;
-
-  return 3;
+  // Map composite tier to readiness tier
+  // PRIME/GOOD → 0 (READY)
+  // MARGINAL   → 1 (WATCH)
+  // WEAK       → 2 (WAIT)
+  // AVOID/BLOCK → 3 (WEAK)
+  // no signal  → 4 (NONE)
+  switch (cs.tier) {
+    case 'PRIME':    return 0;
+    case 'GOOD':     return 0;
+    case 'MARGINAL': return 1;
+    case 'WEAK':     return 2;
+    case 'AVOID':    return 3;
+    case 'BLOCK':    return 3;
+    default:         return 4;
+  }
 }
 
 // Tier labels and styles for display
 const TIER_META = {
-  0: { label: '🟢 READY',   cls: 'tierReady', short: 'READY' },
-  1: { label: '⏳ WATCH',   cls: 'tierWatch', short: 'WATCH' },
-  2: { label: '◐ WAIT',     cls: 'tierWait',  short: 'WAIT'  },
-  3: { label: '○ WEAK',     cls: 'tierWeak',  short: 'WEAK'  },
+  0: { label: '🟢 READY',    cls: 'tierReady', short: 'READY' },
+  1: { label: '⏳ MARGINAL', cls: 'tierWatch', short: 'WATCH' },
+  2: { label: '◐ WEAK',      cls: 'tierWait',  short: 'WEAK'  },
+  3: { label: '○ AVOID',     cls: 'tierWeak',  short: 'AVOID' },
   4: { label: '— NO TRADE', cls: 'tierNone',  short: 'NONE'  },
 };
 
@@ -484,7 +442,9 @@ export function SignalsPage({
         conviction !== 'none' && conviction !== 'exit';
 
       const readinessTier = getReadinessTier(
-        { sig, ticker }
+        { sig, ticker },
+        null,
+        null
       );
       return {
         ticker, bucket, sig, isActive,

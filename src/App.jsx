@@ -33,17 +33,17 @@ export default function App() {
   } = isPublic
     ? {
         groups: [],
-        prices: {},
-        getPrice: () => null,
-        setPrice: () => {},
+        prices: posData.prices,
+        getPrice: posData.getPrice,
+        setPrice: posData.setPrice,
         loading: false,
-        pricesLoading: false,
+        pricesLoading: posData.pricesLoading,
         error: null,
         lastUpdated: null,
-        pricesUpdated: null,
+        pricesUpdated: posData.pricesUpdated,
         usingFallback: false,
         reload: () => {},
-        refreshPrices: () => {},
+        refreshPrices: posData.refreshPrices,
         balances: { rh: 0, fid: 0 },
         watchlist: posData.watchlist,
         closed: []
