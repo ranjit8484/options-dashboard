@@ -62,6 +62,7 @@ const BASE_PRICES = {
   TGT:128.39, HD:310.00, W:97.00, NFLX:87.68,
 };
 
+export { fetchLivePrices };
 export function usePositions() {
   const [groups, setGroups] = useState([]);
   const [balances, setBalances] = useState({ rh: 0, fid: 0 });
@@ -142,7 +143,7 @@ export function usePositions() {
   }, []);
 
   const getPrice = useCallback((ticker) => {
-    return prices[ticker] ?? groups.find(g => g.t === ticker)?.pos?.[0]?.k ?? 100;
+    return prices[ticker] ?? groups.find(g => g.t === ticker)?.pos?.[0]?.k ?? null;
   }, [prices, groups]);
 
   return {

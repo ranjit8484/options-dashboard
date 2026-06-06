@@ -1,9 +1,10 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
   buildRec, buildLeapRec, getExpiries, getLeapExpiries, getIV
 } from '../lib/strikeCalc';
 import { loadParams } from '../hooks/useParams';
+import { fetchLivePrices } from '../hooks/usePositions';
 import { calcStatus, estPnl, f$,
   calcCompositeScore } from '../lib/finance';
 import { useFundamentals, calcBackdrop,
@@ -1596,13 +1597,22 @@ export function ResearchCard({
 
   const defaultIv = Math.round(getIV(ticker) * 100);
   const [ivOverride, setIvOverride] = useState(defaultIv);
+  const [liveSpot, setLiveSpot] = useState(null);
+
+  useEffect(() => {
+    if (!spotProp && ticker) {
+      fetchLivePrices([ticker]).then(result => {
+        if (result[ticker]) setLiveSpot(result[ticker]);
+      });
+    }
+  }, [ticker, spotProp]);
 
   if (!sig) return null;
 
-  // Fallback spot: use first active position strike or signal-derived estimate
   const spot = spotProp
+    || liveSpot
     || activePositions?.[0]?.k
-    || 100;
+    || null;
 
   // Composite score — needs all signals
   // QQQ market filter added in next enhancement
@@ -1683,7 +1693,7 @@ export function ResearchCard({
           </div>
           <div className={styles.cardHeaderRight}>
             <span className={styles.cardPrice}>
-              ${spot?.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}
+              {spot ? `$${spot.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : '—'}
             </span>
             <button className={styles.closeBtn} onClick={onClose}>✕</button>
           </div>
