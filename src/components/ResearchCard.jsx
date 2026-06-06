@@ -4,7 +4,8 @@ import {
   buildRec, buildLeapRec, getExpiries, getLeapExpiries, getIV
 } from '../lib/strikeCalc';
 import { loadParams } from '../hooks/useParams';
-import { calcStatus, estPnl, f$ } from '../lib/finance';
+import { calcStatus, estPnl, f$,
+  calcCompositeScore } from '../lib/finance';
 import { useFundamentals, calcBackdrop,
   useContext } from '../hooks/useFundamentals';
 import { EntryChecklist, useChecklistReady } from './EntryChecklist';
@@ -179,22 +180,164 @@ function ContextPanel({ context }) {
   );
 }
 
+// ── Score panel ───────────────────────────────────────────────────
+function ScorePanel({ score }) {
+  if (!score) return null;
+
+  const colorMap = {
+    green: styles.scorePanelGreen,
+    amber: styles.scorePanelAmber,
+    red:   styles.scorePanelRed,
+  };
+
+  const rows = [
+    score.earningsFlag && {
+      icon: '📅', label: 'EARNINGS',
+      val: score.earningsFlag,
+      cls: styles.scoreRowRed
+    },
+    score.rangeFlag && {
+      icon: '📊', label: 'RANGE',
+      val: score.rangeFlag.msg,
+      cls: score.rangeFlag.level === 'BLOCK'
+        ? styles.scoreRowRed
+        : score.rangeFlag.level === 'WARN'
+        ? styles.scoreRowAmber
+        : styles.scoreRowGreen
+    },
+    score.alignFlag && {
+      icon: '🎯', label: 'SIGNAL',
+      val: score.alignFlag,
+      cls: score.breakdown.align >= 22
+        ? styles.scoreRowGreen
+        : score.breakdown.align >= 15
+        ? styles.scoreRowAmber
+        : styles.scoreRowRed
+    },
+    score.maturityFlag && {
+      icon: '⏱', label: 'MATURITY',
+      val: score.maturityFlag,
+      cls: score.breakdown.maturity >= 14
+        ? styles.scoreRowGreen
+        : score.breakdown.maturity >= 7
+        ? styles.scoreRowAmber
+        : styles.scoreRowRed
+    },
+    score.marketFlag && {
+      icon: '🌐', label: 'MARKET',
+      val: score.marketFlag,
+      cls: score.breakdown.market >= 10
+        ? styles.scoreRowGreen
+        : score.breakdown.market >= 5
+        ? styles.scoreRowAmber
+        : styles.scoreRowRed
+    },
+    score.extFlag && {
+      icon: '📏', label: 'EXTENSION',
+      val: score.extFlag,
+      cls: score.breakdown.ext >= 7
+        ? styles.scoreRowGreen
+        : styles.scoreRowAmber
+    },
+    score.rsiFlag && {
+      icon: '📉', label: 'RSI',
+      val: score.rsiFlag,
+      cls: styles.scoreRowAmber
+    },
+    score.macdFlag && {
+      icon: '📈', label: 'MACD',
+      val: score.macdFlag,
+      cls: score.breakdown.macd > 0
+        ? styles.scoreRowGreen
+        : styles.scoreRowAmber
+    },
+  ].filter(Boolean);
+
+  return (
+    <div className={`${styles.scorePanel}
+      ${colorMap[score.tierColor] ?? ''}`}>
+
+      {/* Primary decision */}
+      <div className={styles.scoreTier}>
+        <span className={styles.scoreTierLabel}>
+          {score.tierLabel}
+        </span>
+        <span className={styles.scoreNumber}>
+          {score.score}/100
+        </span>
+      </div>
+
+      {/* Recommendation */}
+      <div className={styles.scoreRec}>
+        {score.recommendation}
+      </div>
+
+      {/* Watch for */}
+      {score.watchFor && (
+        <div className={styles.scoreWatch}>
+          {score.watchFor}
+        </div>
+      )}
+
+      {/* Score breakdown rows */}
+      <div className={styles.scoreRows}>
+        {rows.map((row, i) => (
+          <div key={i}
+            className={`${styles.scoreRow} ${row.cls}`}>
+            <span className={styles.scoreRowIcon}>
+              {row.icon}
+            </span>
+            <span className={styles.scoreRowLabel}>
+              {row.label}
+            </span>
+            <span className={styles.scoreRowVal}>
+              {row.val}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Score breakdown bar */}
+      <div className={styles.scoreBar}>
+        <div
+          className={`${styles.scoreBarFill}
+            ${score.tierColor === 'green'
+              ? styles.scoreBarGreen
+              : score.tierColor === 'amber'
+              ? styles.scoreBarAmber
+              : styles.scoreBarRed}`}
+          style={{ width: `${score.score}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ── Fundamental backdrop ──────────────────────────────────────────
-function FundamentalBackdrop({ ticker, isBull, spot, fundamentals, loading }) {
+function FundamentalBackdrop({
+  ticker, isBull, spot, fundamentals, loading
+}) {
   if (loading) return (
-    <div className={styles.backdropLoading}>
-      ⟳ Loading fundamental data...
+    <div className={styles.bdLoading}>
+      Loading fundamentals...
     </div>
   );
+  if (!fundamentals) return null;
 
-  if (!fundamentals) return (
-    <div className={styles.backdropEmpty}>
-      No fundamental data available
-    </div>
-  );
-
-  const bd = calcBackdrop(fundamentals, isBull, spot);
+  const bd = calcBackdrop(fundamentals,
+    isBull, spot);
   if (!bd) return null;
+
+  const range52 = fundamentals.range52;
+  const rangePos = range52 && spot
+    ? Math.max(0, Math.min(1,
+        (spot - range52.low)
+        / (range52.high - range52.low)
+      ))
+    : null;
+
+  const rangePct = rangePos !== null
+    ? Math.round(rangePos * 100) : null;
 
   const ratingCls = {
     STRONG:   styles.bdStrong,
@@ -204,90 +347,83 @@ function FundamentalBackdrop({ ticker, isBull, spot, fundamentals, loading }) {
     AGAINST:  styles.bdAgainst,
   }[bd.rating] ?? styles.bdNeutral;
 
-  const ratingIcon = {
-    STRONG:   '✅',
-    SUPPORTS: '✓',
-    NEUTRAL:  '○',
-    CAUTION:  '⚠',
-    AGAINST:  '🚫',
-  }[bd.rating] ?? '○';
-
-  const tradeDir = isBull ? 'bullish' : 'bearish';
+  const ratingLabel = {
+    STRONG:   'Strong for ' + (isBull
+      ? 'bullish' : 'bearish'),
+    SUPPORTS: 'Supports ' + (isBull
+      ? 'bullish' : 'bearish'),
+    NEUTRAL:  'Neutral',
+    CAUTION:  'Caution',
+    AGAINST:  'Against ' + (isBull
+      ? 'bullish' : 'bearish'),
+  }[bd.rating] ?? 'Neutral';
 
   return (
-    <div className={`${styles.backdrop_panel} ${ratingCls}`}>
+    <div className={styles.bdPanel}>
 
-      {/* Rating header */}
+      {/* 52-week range bar — top */}
+      {range52 && rangePct !== null && (
+        <div className={styles.bdRangeBlock}>
+          <div className={styles.bdRangeLabels}>
+            <span className={styles.bdRangeLow}>
+              ${Math.round(range52.low)
+                .toLocaleString()}
+            </span>
+            <span className={styles.bdRangePct}>
+              {rangePct}% of range
+            </span>
+            <span className={styles.bdRangeHigh}>
+              ${Math.round(range52.high)
+                .toLocaleString()}
+            </span>
+          </div>
+          <div className={styles.bdRangeBar}>
+            <div
+              className={styles.bdRangeFill}
+              style={{ width: `${rangePct}%` }}
+            />
+            <div
+              className={styles.bdRangePointer}
+              style={{ left: `${rangePct}%` }}
+            />
+          </div>
+          <div className={styles.bdRangeNote}>
+            {rangePct >= 80
+              ? 'Near yearly high — limited upside'
+              : rangePct >= 60
+              ? 'Upper half — extended'
+              : rangePct >= 40
+              ? 'Mid range — neutral'
+              : rangePct >= 20
+              ? 'Lower half — potential value'
+              : 'Near yearly low — limited downside'}
+          </div>
+        </div>
+      )}
+
       <div className={styles.bdHeader}>
-        <span className={styles.bdIcon}>{ratingIcon}</span>
-        <span className={styles.bdTitle}>Fundamental Backdrop</span>
-        <span className={`${styles.bdRating} ${ratingCls}`}>
-          {bd.rating} for {tradeDir}
+        <span className={styles.bdTitle}>
+          FUNDAMENTALS
+        </span>
+        <span className={`${styles.bdRating}
+          ${ratingCls}`}>
+          {ratingLabel}
         </span>
       </div>
 
-      {/* Key metrics row */}
-      <div className={styles.bdMetrics}>
-
-        {bd.nextEarnings && (
-          <div className={styles.bdMetric}>
-            <span className={styles.bdMetricLbl}>Earnings</span>
-            <span className={`${styles.bdMetricVal} ${bd.nextEarnings.dte <= 14 ? styles.bdWarn : styles.bdOk}`}>
-              {bd.nextEarnings.label} · {bd.nextEarnings.dte}d away
-              {bd.nextEarnings.dte <= 14 ? ' ⚠' : ' ✓'}
-            </span>
-          </div>
-        )}
-
-        {bd.analysts && (
-          <div className={styles.bdMetric}>
-            <span className={styles.bdMetricLbl}>Analysts</span>
-            <span className={styles.bdMetricVal}>
-              {bd.analysts.bullish} Buy · {bd.analysts.hold} Hold · {bd.analysts.bearish} Sell · {bd.analysts.consensus}
-            </span>
-          </div>
-        )}
-
-        {bd.priceTarget && spot && (
-          <div className={styles.bdMetric}>
-            <span className={styles.bdMetricLbl}>Target</span>
-            <span className={`${styles.bdMetricVal} ${isBull ? bd.priceTarget.mean > spot ? styles.bdOk : styles.bdWarn : bd.priceTarget.mean < spot ? styles.bdOk : styles.bdWarn}`}>
-              ${bd.priceTarget.mean.toLocaleString()}
-              {' '}({bd.priceTarget.mean > spot ? '+' : ''}
-              {Math.round((bd.priceTarget.mean - spot) / spot * 100)}%)
-            </span>
-          </div>
-        )}
-
-        {bd.range52 && (
-          <div className={styles.bdMetric}>
-            <span className={styles.bdMetricLbl}>52-week</span>
-            <span className={styles.bdMetricVal}>
-              ${Math.round(bd.range52.low).toLocaleString()} — ${Math.round(bd.range52.high).toLocaleString()}
-            </span>
-          </div>
-        )}
-
-      </div>
-
-      {/* Supports list */}
-      {bd.supports.length > 0 && (
-        <div className={styles.bdPoints}>
-          {bd.supports.map((s, i) => (
-            <div key={i} className={styles.bdSupport}>✓ {s}</div>
-          ))}
+      {/* Earnings warning */}
+      {fundamentals.nextEarnings && (
+        <div className={`${styles.bdEarnings}
+          ${fundamentals.nextEarnings.dte <= 7
+            ? styles.bdEarningsRed
+            : styles.bdEarningsAmber}`}>
+          Earnings {fundamentals.nextEarnings.label}
+          · {fundamentals.nextEarnings.dte}d away
+          {fundamentals.nextEarnings.dte <= 7
+            ? ' — avoid new positions'
+            : ' — elevated IV'}
         </div>
       )}
-
-      {/* Warnings list */}
-      {bd.warnings.length > 0 && (
-        <div className={styles.bdPoints}>
-          {bd.warnings.map((w, i) => (
-            <div key={i} className={styles.bdWarning}>⚠ {w}</div>
-          ))}
-        </div>
-      )}
-
     </div>
   );
 }
@@ -806,6 +942,331 @@ function SpreadTab({ ticker, spot, isBull, conviction, account, params, ivOverri
 }
 
 // ── Manage tab (active positions on this ticker) ──────────────────
+function TradeRecommendationTab({
+  ticker, spot, isBull, conviction,
+  account, params, ivOverride, sig,
+  fundamentals, compositeScore
+}) {
+  const isCall = !isBull;
+  const iv = ivOverride / 100;
+
+  // Best expiry — prefer 14-21 DTE
+  const expiries = getExpiries(2, 5);
+  const bestExp = expiries.find(e =>
+    e.dte >= 14 && e.dte <= 28
+  ) ?? expiries[0];
+
+  // Compute best spread rec
+  const shortDelta = conviction === 'full' ? 0.30
+    : conviction === 'high' ? 0.28 : 0.25;
+  const longDelta = shortDelta * 0.45;
+
+  const spreadRec = bestExp ? buildRec({
+    spot, ticker, isCall,
+    shortDelta, longDelta: longDelta,
+    dte: bestExp.dte, tradeType: 'spread',
+    account, conviction, params, ivOverride: iv
+  }) : null;
+
+  // Compute naked rec
+  const nakedRec = bestExp ? buildRec({
+    spot, ticker, isCall,
+    shortDelta: conviction === 'full' ? 0.25 : 0.20,
+    longDelta: null,
+    dte: bestExp.dte, tradeType: 'naked',
+    account, conviction, params, ivOverride: iv
+  }) : null;
+
+  // Compute LEAP rec
+  const leapExpiries = getExpiries(6, 18);
+  const leapExp = leapExpiries.find(e => e.dte >= 180)
+    ?? leapExpiries[leapExpiries.length - 1];
+  const leapRec = leapExp ? buildRec({
+    spot, ticker, isCall: !isBull,
+    shortDelta: 0.40, longDelta: null,
+    dte: leapExp?.dte ?? 365,
+    tradeType: 'naked',
+    account, conviction, params, ivOverride: iv
+  }) : null;
+
+  // Decide best fit based on conviction
+  const bestFit = conviction === 'full'
+    ? 'naked' : 'spread';
+
+  const score = compositeScore?.score ?? 0;
+
+  return (
+    <div className={styles.tabContent}>
+
+      {/* Best fit */}
+      <div className={styles.tradeSection}>
+        <div className={styles.tradeSectionLabel}>
+          BEST FIT
+        </div>
+
+        {bestFit === 'spread' && spreadRec ? (
+          <div className={`${styles.tradeRec}
+            ${styles.tradeRecFeatured}`}>
+            <div className={styles.tradeRecHead}>
+              <span className={styles.tradeRecName}>
+                {isBull ? 'Put spread' : 'Call spread'}
+              </span>
+              <span className={`${styles.tradeRecTag}
+                ${styles.tradeTagGreen}`}>
+                Recommended
+              </span>
+            </div>
+            <div className={styles.tradeRecBody}>
+              <div className={styles.tradeStrikes}>
+                Sell ${spreadRec.shortStrike}
+                {spreadRec.longStrike
+                  ? ` / Buy $${spreadRec.longStrike}`
+                  : ''} {isCall ? 'call' : 'put'}
+              </div>
+              <div className={styles.tradeMetaGrid}>
+                <span className={styles.tradeMeta}>
+                  Expiry
+                </span>
+                <span className={styles.tradeMetaVal}>
+                  {bestExp?.label} · {bestExp?.dte}d
+                </span>
+                <span className={styles.tradeMeta}>
+                  Premium
+                </span>
+                <span className={styles.tradeMetaVal}>
+                  ~${spreadRec.premium}/share
+                </span>
+                <span className={styles.tradeMeta}>
+                  Buffer
+                </span>
+                <span className={styles.tradeMetaVal}>
+                  {parseFloat(spreadRec.buffer ?? 0).toFixed(1)}% OTM
+                </span>
+                <span className={styles.tradeMeta}>
+                  Max gain/loss
+                </span>
+                <span className={styles.tradeMetaVal}>
+                  <span className={styles.pos}>
+                    +${spreadRec.premiumTotal}
+                  </span>
+                  {' / '}
+                  <span className={styles.neg}>
+                    -${spreadRec.maxLoss
+                      ?.toLocaleString() ?? '—'}
+                  </span>
+                </span>
+              </div>
+              <div className={styles.tradeWhy}>
+                {conviction === 'medium' || conviction === 'low'
+                  ? `Medium conviction — defined risk appropriate. Need W★★+D★★ for naked.`
+                  : `High conviction — spread gives defined risk with strong premium.`}
+              </div>
+            </div>
+          </div>
+        ) : bestFit === 'naked' && nakedRec ? (
+          <div className={`${styles.tradeRec}
+            ${styles.tradeRecFeatured}`}>
+            <div className={styles.tradeRecHead}>
+              <span className={styles.tradeRecName}>
+                {isBull ? 'Naked put' : 'Naked call'}
+              </span>
+              <span className={`${styles.tradeRecTag}
+                ${styles.tradeTagGreen}`}>
+                Recommended
+              </span>
+            </div>
+            <div className={styles.tradeRecBody}>
+              <div className={styles.tradeStrikes}>
+                Sell ${nakedRec.shortStrike}
+                {isCall ? ' call' : ' put'}
+              </div>
+              <div className={styles.tradeMetaGrid}>
+                <span className={styles.tradeMeta}>
+                  Expiry
+                </span>
+                <span className={styles.tradeMetaVal}>
+                  {bestExp?.label} · {bestExp?.dte}d
+                </span>
+                <span className={styles.tradeMeta}>
+                  Premium
+                </span>
+                <span className={styles.tradeMetaVal}>
+                  ~${nakedRec.premium}/share
+                </span>
+                <span className={styles.tradeMeta}>
+                  Buffer
+                </span>
+                <span className={styles.tradeMetaVal}>
+                  {parseFloat(nakedRec.buffer ?? 0).toFixed(1)}% OTM
+                </span>
+                <span className={styles.tradeMeta}>
+                  Collateral
+                </span>
+                <span className={styles.tradeMetaVal}>
+                  ~${nakedRec.margin
+                    ?.toLocaleString() ?? '—'}
+                </span>
+              </div>
+              <div className={styles.tradeWhy}>
+                Full conviction W★★+D★★ — naked appropriate.
+                Fresh signal, strong setup.
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className={styles.noRecs}>
+            No valid strikes — adjust IV above
+          </div>
+        )}
+      </div>
+
+      {/* Also consider */}
+      <div className={styles.tradeSection}>
+        <div className={styles.tradeSectionLabel}>
+          ALSO CONSIDER
+        </div>
+
+        {/* Spread alternative (when naked is best) */}
+        {bestFit === 'naked' && spreadRec && (
+          <div className={styles.tradeRec}>
+            <div className={styles.tradeRecHead}>
+              <span className={styles.tradeRecName}>
+                {isBull ? 'Put spread' : 'Call spread'}
+              </span>
+              <span className={`${styles.tradeRecTag}
+                ${styles.tradeTagGrey}`}>
+                Defined risk
+              </span>
+            </div>
+            <div className={styles.tradeRecBody}>
+              <div className={styles.tradeStrikes}>
+                Sell ${spreadRec.shortStrike}
+                {spreadRec.longStrike
+                  ? ` / Buy $${spreadRec.longStrike}`
+                  : ''} {isCall ? 'call' : 'put'}
+              </div>
+              <div className={styles.tradeMetaGrid}>
+                <span className={styles.tradeMeta}>
+                  Premium
+                </span>
+                <span className={styles.tradeMetaVal}>
+                  ~${spreadRec.premium}/share
+                </span>
+                <span className={styles.tradeMeta}>
+                  Max loss
+                </span>
+                <span className={styles.tradeMetaVal}>
+                  -${spreadRec.maxLoss
+                    ?.toLocaleString() ?? '—'}
+                </span>
+              </div>
+              <div className={styles.tradeWhy}>
+                If you prefer capped risk. Lower premium
+                but no margin requirement.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Naked alternative (when spread is best) */}
+        {bestFit === 'spread' && nakedRec && (
+          <div className={styles.tradeRec}>
+            <div className={styles.tradeRecHead}>
+              <span className={styles.tradeRecName}>
+                {isBull ? 'Naked put' : 'Naked call'}
+              </span>
+              <span className={`${styles.tradeRecTag}
+                ${styles.tradeTagAmber}`}>
+                Higher risk
+              </span>
+            </div>
+            <div className={styles.tradeRecBody}>
+              <div className={styles.tradeStrikes}>
+                Sell ${nakedRec.shortStrike}
+                {isCall ? ' call' : ' put'}
+              </div>
+              <div className={styles.tradeMetaGrid}>
+                <span className={styles.tradeMeta}>
+                  Premium
+                </span>
+                <span className={styles.tradeMetaVal}>
+                  ~${nakedRec.premium}/share
+                </span>
+                <span className={styles.tradeMeta}>
+                  Collateral
+                </span>
+                <span className={styles.tradeMetaVal}>
+                  ~${nakedRec.margin
+                    ?.toLocaleString() ?? '—'}
+                </span>
+              </div>
+              <div className={styles.tradeWhy}>
+                Only if W★★+D★★ confirmed. Current
+                conviction is {conviction} — spread safer.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* LEAP always shown as alternative */}
+        {leapRec && leapExp && (
+          <div className={styles.tradeRec}>
+            <div className={styles.tradeRecHead}>
+              <span className={styles.tradeRecName}>
+                {isBull ? 'Call LEAP' : 'Put LEAP'}
+              </span>
+              <span className={`${styles.tradeRecTag}
+                ${styles.tradeTagGrey}`}>
+                Long-term
+              </span>
+            </div>
+            <div className={styles.tradeRecBody}>
+              <div className={styles.tradeStrikes}>
+                Buy ${leapRec.shortStrike}
+                {isBull ? ' call' : ' put'}
+                · {leapExp.label}
+              </div>
+              <div className={styles.tradeMetaGrid}>
+                <span className={styles.tradeMeta}>
+                  Cost
+                </span>
+                <span className={styles.tradeMetaVal}>
+                  ~${leapRec.premium}/share
+                  = ${leapRec.premiumTotal} total
+                </span>
+                <span className={styles.tradeMeta}>
+                  Break even
+                </span>
+                <span className={styles.tradeMetaVal}>
+                  ${isBull
+                    ? Math.round(
+                        (leapRec.shortStrike ?? 0)
+                        + parseFloat(leapRec.premium ?? 0)
+                      )
+                    : Math.round(
+                        (leapRec.shortStrike ?? 0)
+                        - parseFloat(leapRec.premium ?? 0)
+                      )
+                  }
+                </span>
+              </div>
+              <div className={styles.tradeWhy}>
+                For 6-month directional conviction.
+                Needs bigger move but unlimited upside.
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className={styles.exitRule}>
+        Exit: close at 50% profit or 7 DTE ·
+        Roll if breached with 5+ DTE remaining
+      </div>
+    </div>
+  );
+}
+
 function ManageTab({ positions, price, ticker, sig }) {
   if (!positions?.length) return (
     <div className={styles.tabContent}>
@@ -1143,6 +1604,18 @@ export function ResearchCard({
     || activePositions?.[0]?.k
     || 100;
 
+  // Composite score — needs all signals
+  // QQQ market filter added in next enhancement
+  const compositeScore = useMemo(() => {
+    if (!sig || !spot) return null;
+    return calcCompositeScore({
+      sig,
+      fundamentals,
+      spot,
+      marketSig: null
+    });
+  }, [sig, fundamentals, spot]);
+
   const entry      = sig._entry;
   const strategy   = sig._strategy;
   const conviction = strategy?.conviction ?? 'medium';
@@ -1153,24 +1626,23 @@ export function ResearchCard({
     ||(entry?.action==='WATCH'&&entry?.dir==='long');
 
   const hasPositions = activePositions?.length > 0;
-  const noTrade = strategy?.noTrade === true && !hasPositions;
+  const scoreTier = compositeScore?.tier;
+  const tradeAllowed = scoreTier === 'PRIME'
+    || scoreTier === 'GOOD'
+    || scoreTier === 'MARGINAL';
+  const noTrade = !tradeAllowed && !hasPositions;
 
-  // Auto-select default tab based on conviction and positions
-  const defaultTab = hasPositions ? 'manage' : 'why';
+  const defaultTab = 'why';
   const [activeTab, setActiveTab] = useState(defaultTab);
 
   const tabs = [
-    { id:'why',    label:'📋 Thesis' },
+    { id:'why',   label:'📋 Thesis' },
+    ...(tradeAllowed
+      ? [{ id:'trade', label:'💡 Trade' }]
+      : []),
     ...(hasPositions
       ? [{ id:'manage', label:`⚡ Manage (${activePositions.length})` }]
       : []),
-    ...(!noTrade ? [
-      { id:'naked',  label: isBull ? '💰 Naked Put' : '💰 Naked Call',
-        badge: conviction==='full' ? '★' : null },
-      { id:'spread', label: isBull ? '📊 Put Spread' : '📊 Call Spread',
-        badge: conviction!=='full' && conviction!=='none' ? '★' : null },
-      { id:'leap',   label: isBull ? '🚀 Call LEAP' : '🚀 Put LEAP' },
-    ] : []),
   ];
 
   return createPortal(
@@ -1241,6 +1713,7 @@ export function ResearchCard({
           {activeTab==='why' && (
             <div className={styles.tabContent}>
               <ContextPanel context={context} />
+              <ScorePanel score={compositeScore} />
               <FundamentalBackdrop
                 ticker={ticker}
                 isBull={isBull}
@@ -1248,52 +1721,29 @@ export function ResearchCard({
                 fundamentals={fundamentals}
                 loading={fundLoading}
               />
-              <WhySection
-                ticker={ticker}
-                sig={sig}
-                entry={entry}
-                strategy={strategy}
-              />
             </div>
           )}
+          {activeTab==='trade' && (
+            <TradeRecommendationTab
+              ticker={ticker}
+              spot={spot}
+              isBull={isBull}
+              conviction={conviction}
+              account={account}
+              params={params}
+              ivOverride={ivOverride}
+              sig={sig}
+              fundamentals={fundamentals}
+              compositeScore={compositeScore}
+            />
+          )}
           {activeTab==='manage' && (
-            <ManageTab positions={activePositions} price={spot} ticker={ticker} sig={sig} />
-          )}
-          {activeTab==='naked' && (
-            <>
-              {!hasPositions && !noTrade && (
-                <RecommendedBanner
-                  conviction={conviction} isBull={isBull}
-                  spot={spot} ticker={ticker}
-                  params={params} account={account}
-                  entry={entry} />
-              )}
-              <NakedTab ticker={ticker} spot={spot}
-                isBull={isBull} conviction={conviction}
-                account={account} params={params}
-                ivOverride={ivOverride}
-                sig={sig} fundamentals={fundamentals} />
-            </>
-          )}
-          {activeTab==='spread' && (
-            <>
-              {!hasPositions && !noTrade && (
-                <RecommendedBanner
-                  conviction={conviction} isBull={isBull}
-                  spot={spot} ticker={ticker}
-                  params={params} account={account}
-                  entry={entry} />
-              )}
-              <SpreadTab ticker={ticker} spot={spot}
-                isBull={isBull} conviction={conviction}
-                account={account} params={params}
-                ivOverride={ivOverride}
-                sig={sig} fundamentals={fundamentals} />
-            </>
-          )}
-          {activeTab==='leap' && (
-            <LeapTab ticker={ticker} spot={spot} isBull={isBull}
-              sig={sig} fundamentals={fundamentals} />
+            <ManageTab
+              positions={activePositions}
+              price={spot}
+              ticker={ticker}
+              sig={sig}
+            />
           )}
         </div>
 

@@ -448,7 +448,8 @@ function TickerSearch({ onResult, prices }) {
 // ── Main export ───────────────────────────────────────
 export function SignalsPage({
   groups, watchlist, signals, signalsLoading,
-  progress, onRefresh, balances, prices, params
+  progress, onRefresh, balances, prices, params,
+  isPublic
 }) {
   const [researchTarget, setResearchTarget] = useState(null);
   const [searchResult,   setSearchResult]   = useState(null);
@@ -550,7 +551,9 @@ export function SignalsPage({
       />
 
       {/* ── Portfolio Status ── */}
-      <PortfolioBar groups={groups} params={p} prices={prices} balances={balances} />
+      {!isPublic && (
+        <PortfolioBar groups={groups} params={p} prices={prices} balances={balances} />
+      )}
 
       {/* ── Inner tab bar ── */}
       <div className={styles.innerTabBar}>
@@ -694,6 +697,7 @@ export function SignalsPage({
           activePositions={researchTarget.activePositions}
           balances={balances}
           onClose={() => setResearchTarget(null)}
+          allSignals={signals}
         />
       )}
 

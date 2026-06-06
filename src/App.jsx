@@ -18,7 +18,37 @@ import styles from "./App.module.css";
 const STATUS_ORDER = { danger: 0, watch: 1, safe: 2 };
 
 export default function App() {
-  const { groups, prices, getPrice, setPrice, loading, pricesLoading, error, lastUpdated, pricesUpdated, usingFallback, reload, refreshPrices, balances, watchlist, closed } = usePositions();
+  // Public mode — hide positions, show signals only
+  const isPublic = new URLSearchParams(
+    window.location.search
+  ).get('public') === 'true';
+
+  const posData = usePositions();
+  const {
+    groups, prices, getPrice, setPrice,
+    loading, pricesLoading, error,
+    lastUpdated, pricesUpdated,
+    usingFallback, reload, refreshPrices,
+    balances, watchlist, closed
+  } = isPublic
+    ? {
+        groups: [],
+        prices: {},
+        getPrice: () => null,
+        setPrice: () => {},
+        loading: false,
+        pricesLoading: false,
+        error: null,
+        lastUpdated: null,
+        pricesUpdated: null,
+        usingFallback: false,
+        reload: () => {},
+        refreshPrices: () => {},
+        balances: { rh: 0, fid: 0 },
+        watchlist: posData.watchlist,
+        closed: []
+      }
+    : posData;
   const [plat, setPlat] = useState("ALL");
   const [sort, setSort] = useState("status");
   const [tradeType, setTradeType] = useState("ALL");
@@ -26,7 +56,9 @@ export default function App() {
   const [rulesOpen, setRulesOpen] = useState(false);
   const [paramsOpen, setParamsOpen] = useState(false);
   const [params, setParams] = useState(loadParams);
-  const [activeTab, setActiveTab] = useState("active");
+  const [activeTab, setActiveTab] = useState(
+    isPublic ? 'signals' : 'active'
+  );
 
   const tickers = useMemo(() => {
     const active = groups.map(g => g.t);
@@ -201,38 +233,44 @@ export default function App() {
       <header className={styles.header}>
         <div className={styles.headerLeft}>
           <div className={styles.logo}>G2</div>
-          <div>
-            <h1 className={styles.title}>Options Dashboard</h1>
-            <div className={styles.stamp}>
-              <span>Sheet {fmtTime(lastUpdated)}</span>
-              {pricesUpdated && (
-                <span className={styles.pricesStamp}>
-                  {pricesLoading ? "⟳ fetching…" : `Prices ${fmtTime(pricesUpdated)}`}
-                </span>
-              )}
-              {cacheTs && !signalsLoading && (
-                <span className={`${styles.signalsStamp} ${signalsStale ? styles.staleTime : ''}`}>
-                  Signals {fmtTime(cacheTs)}
-                  {signalsStale ? ' ⚠' : ''}
-                </span>
-              )}
-              {signalsLoading && (
-                <span className={styles.signalsStamp}>
-                  ⟳ signals {progress.done}/{progress.total}
-                </span>
-              )}
-              {usingFallback && <span className={styles.fallbackBadge}>● demo data</span>}
-              {error && <span className={styles.errorBadge} title={error}>⚠ sheet offline</span>}
+          {!isPublic && (
+            <div>
+              <h1 className={styles.title}>Options Dashboard</h1>
+              <div className={styles.stamp}>
+                <span>Sheet {fmtTime(lastUpdated)}</span>
+                {pricesUpdated && (
+                  <span className={styles.pricesStamp}>
+                    {pricesLoading ? "⟳ fetching…" : `Prices ${fmtTime(pricesUpdated)}`}
+                  </span>
+                )}
+                {cacheTs && !signalsLoading && (
+                  <span className={`${styles.signalsStamp} ${signalsStale ? styles.staleTime : ''}`}>
+                    Signals {fmtTime(cacheTs)}
+                    {signalsStale ? ' ⚠' : ''}
+                  </span>
+                )}
+                {signalsLoading && (
+                  <span className={styles.signalsStamp}>
+                    ⟳ signals {progress.done}/{progress.total}
+                  </span>
+                )}
+                {usingFallback && <span className={styles.fallbackBadge}>● demo data</span>}
+                {error && <span className={styles.errorBadge} title={error}>⚠ sheet offline</span>}
+              </div>
             </div>
-          </div>
+          )}
         </div>
         <div className={styles.headerActions}>
-          <button className={styles.rulesBtn} onClick={() => setParamsOpen(true)}>
-            📊 Params
-          </button>
-          <button className={styles.rulesBtn} onClick={() => setRulesOpen(true)}>
-            ⚙ Rules
-          </button>
+          {!isPublic && (
+            <>
+              <button className={styles.rulesBtn} onClick={() => setParamsOpen(true)}>
+                📊 Params
+              </button>
+              <button className={styles.rulesBtn} onClick={() => setRulesOpen(true)}>
+                ⚙ Rules
+              </button>
+            </>
+          )}
           <button
             className={`${styles.refreshBtn} ${signalsStale && !signalsLoading ? styles.refreshStale : ''}`}
             onClick={refreshSignals}
@@ -255,7 +293,7 @@ export default function App() {
         </div>
       </header>
 
-      <TabNav activeTab={activeTab} setTab={setActiveTab} />
+      <TabNav activeTab={activeTab} setTab={setActiveTab} isPublic={isPublic} />
 
       {/* ── Platform filter — global, controls all tabs ── */}
       <PlatformFilter plat={plat} setPlat={setPlat} />
@@ -320,6 +358,7 @@ export default function App() {
           prices={prices}
           params={params}
           plat={plat}
+          isPublic={isPublic}
         />
       )}
 

@@ -694,6 +694,356 @@ export function calcIchimoku(candles) {
   return { xs, signal, isNew: tkCross, cloudBull, priceVsCloud, tenkan, kijun, kijunDist };
 }
 
+// ─── Composite Score ──────────────────────────────────────────────
+export function calcCompositeScore({
+  sig, fundamentals, spot, marketSig
+}) {
+  if (!sig || !spot) return null;
+
+  const W   = sig.W;
+  const D   = sig.D;
+  const h4  = sig['4H'];
+  const h1  = sig['1H'];
+
+  const wXs    = W?.xs    ?? 0;
+  const dXs    = D?.xs    ?? 0;
+  const wSince = W?.since ?? 0;
+  const dSince = D?.since ?? 0;
+  const wRsi   = W?.rsi   ?? 50;
+  const dRsi   = D?.rsi   ?? 50;
+  const wKijun = W?.kijunDist ?? 0;
+  const dKijun = D?.kijunDist ?? 0;
+  const wRsiDiv = W?.rsiDivergence ?? false;
+  const dRsiDiv = D?.rsiDivergence ?? false;
+  const h4Xs   = h4?.xs ?? 0;
+  const h1Xs   = h1?.xs ?? 0;
+
+  const isBull = wXs >= 1 || dXs >= 1;
+  const isBear = wXs <= -1 || dXs <= -1;
+  const dir    = wXs >= 1 ? 'bull'
+    : wXs <= -1 ? 'bear' : 'neutral';
+
+  // ── 1. Range Position Score (0-25) ──────────────
+  let rangeScore = 12;
+  let rangePos   = null;
+  let rangeFlag  = null;
+
+  if (fundamentals?.range52 && spot) {
+    const { low, high } = fundamentals.range52;
+    const range = high - low;
+    if (range > 0) {
+      rangePos = (spot - low) / range;
+
+      if (dir === 'bull') {
+        if (rangePos > 0.90) {
+          rangeScore = 0;
+          rangeFlag  = {
+            level: 'BLOCK',
+            msg: `At ${Math.round(rangePos*100)}% of 52wk range — near highs. Bull move largely done. DO NOT chase.`
+          };
+        } else if (rangePos > 0.75) {
+          rangeScore = 5;
+          rangeFlag  = {
+            level: 'WARN',
+            msg: `At ${Math.round(rangePos*100)}% of 52wk range — extended. Spread only, half size.`
+          };
+        } else if (rangePos >= 0.20 && rangePos <= 0.60) {
+          rangeScore = 25;
+          rangeFlag  = {
+            level: 'GOOD',
+            msg: `At ${Math.round(rangePos*100)}% of 52wk range — ideal bull entry zone.`
+          };
+        } else if (rangePos < 0.20) {
+          rangeScore = 20;
+          rangeFlag  = {
+            level: 'OK',
+            msg: `At ${Math.round(rangePos*100)}% of 52wk range — near lows, value entry.`
+          };
+        } else {
+          rangeScore = 15;
+        }
+      } else if (dir === 'bear') {
+        if (rangePos < 0.10) {
+          rangeScore = 0;
+          rangeFlag  = {
+            level: 'BLOCK',
+            msg: `At ${Math.round(rangePos*100)}% of 52wk range — near lows. Bear move largely done. DO NOT short.`
+          };
+        } else if (rangePos < 0.25) {
+          rangeScore = 5;
+          rangeFlag  = {
+            level: 'WARN',
+            msg: `At ${Math.round(rangePos*100)}% of 52wk range — oversold. Spread only, half size.`
+          };
+        } else if (rangePos >= 0.40 && rangePos <= 0.80) {
+          rangeScore = 25;
+          rangeFlag  = {
+            level: 'GOOD',
+            msg: `At ${Math.round(rangePos*100)}% of 52wk range — ideal bear entry zone.`
+          };
+        } else if (rangePos > 0.80) {
+          rangeScore = 20;
+          rangeFlag  = {
+            level: 'OK',
+            msg: `At ${Math.round(rangePos*100)}% of 52wk range — near highs, good short zone.`
+          };
+        } else {
+          rangeScore = 15;
+        }
+      }
+    }
+  }
+
+  // ── 2. Signal Alignment Score (0-30) ────────────
+  let alignScore = 0;
+  let alignFlag  = null;
+
+  const wdAligned = (wXs >= 1 && dXs >= 1)
+    || (wXs <= -1 && dXs <= -1);
+  const wStrong = Math.abs(wXs) >= 2;
+  const dStrong = Math.abs(dXs) >= 2;
+
+  if (wStrong && dStrong && wdAligned) {
+    alignScore = 30;
+    alignFlag  = 'W★★ + D★★ — full conviction';
+  } else if (wdAligned && (wStrong || dStrong)) {
+    alignScore = 22;
+    alignFlag  = 'W+D aligned — high conviction';
+  } else if (wdAligned) {
+    alignScore = 15;
+    alignFlag  = 'W+D aligned — medium conviction';
+  } else if (Math.abs(dXs) >= 1) {
+    alignScore = 7;
+    alignFlag  = 'D signal only — W not confirming';
+  } else {
+    alignScore = 0;
+    alignFlag  = 'No clear signal';
+  }
+
+  // ── 3. Signal Maturity Score (0-20) ─────────────
+  let maturityScore = 0;
+  let maturityFlag  = null;
+
+  if (wSince >= 3 && wSince <= 10) {
+    maturityScore = 20;
+    maturityFlag  = `W signal ${wSince} candles — fresh, ideal entry`;
+  } else if (wSince > 10 && wSince <= 20) {
+    maturityScore = 14;
+    maturityFlag  = `W signal ${wSince} candles — established`;
+  } else if (wSince > 20 && wSince <= 35) {
+    maturityScore = 7;
+    maturityFlag  = `W signal ${wSince} candles — maturing, reduce size`;
+  } else if (wSince > 35) {
+    maturityScore = 0;
+    maturityFlag  = `W signal ${wSince} candles — very mature, trend exhaustion likely`;
+  } else {
+    maturityScore = 5;
+    maturityFlag  = `W signal very new — wait for confirmation`;
+  }
+
+  // ── 4. Market Alignment Score (0-15) ────────────
+  let marketScore = 7;
+  let marketFlag  = null;
+
+  if (marketSig) {
+    const qXs  = marketSig.W?.xs ?? 0;
+    const qdXs = marketSig.D?.xs ?? 0;
+
+    if (dir === 'bull') {
+      if (qXs >= 1 && qdXs >= 1) {
+        marketScore = 15;
+        marketFlag  = 'QQQ bullish — market supports long';
+      } else if (qXs >= 1 || qdXs >= 1) {
+        marketScore = 10;
+        marketFlag  = 'QQQ partially bullish';
+      } else if (qXs <= -1 && qdXs <= -1) {
+        marketScore = 0;
+        marketFlag  = 'QQQ bearish — market opposes long trades';
+      } else {
+        marketScore = 5;
+        marketFlag  = 'QQQ neutral — no market tailwind';
+      }
+    } else if (dir === 'bear') {
+      if (qXs <= -1 && qdXs <= -1) {
+        marketScore = 15;
+        marketFlag  = 'QQQ bearish — market supports shorts';
+      } else if (qXs <= -1 || qdXs <= -1) {
+        marketScore = 10;
+        marketFlag  = 'QQQ partially bearish';
+      } else if (qXs >= 1 && qdXs >= 1) {
+        marketScore = 0;
+        marketFlag  = 'QQQ bullish — market opposes short trades';
+      } else {
+        marketScore = 5;
+        marketFlag  = 'QQQ neutral';
+      }
+    }
+  } else {
+    marketFlag = 'QQQ not available';
+  }
+
+  // ── 5. Extension / Kijun Score (0-10) ───────────
+  let extScore = 10;
+  let extFlag  = null;
+
+  const absKijun = Math.abs(wKijun);
+  if (absKijun > 25) {
+    extScore = 0;
+    extFlag  = `${wKijun > 0 ? '+' : ''}${wKijun.toFixed(1)}% from W Kijun — dangerously extended`;
+  } else if (absKijun > 15) {
+    extScore = 4;
+    extFlag  = `${wKijun > 0 ? '+' : ''}${wKijun.toFixed(1)}% from W Kijun — extended, caution`;
+  } else if (absKijun > 8) {
+    extScore = 7;
+    extFlag  = `${wKijun > 0 ? '+' : ''}${wKijun.toFixed(1)}% from W Kijun — slightly extended`;
+  } else {
+    extFlag  = `${wKijun > 0 ? '+' : ''}${wKijun.toFixed(1)}% from W Kijun — within normal range`;
+  }
+
+  // ── 6. RSI Divergence Penalty ───────────────────
+  let rsiPenalty = 0;
+  let rsiFlag    = null;
+
+  if (wRsiDiv && dRsiDiv) {
+    rsiPenalty = 15;
+    rsiFlag    = 'RSI divergence on both W and D — strong reversal warning';
+  } else if (wRsiDiv || dRsiDiv) {
+    rsiPenalty = 8;
+    rsiFlag    = 'RSI divergence detected — momentum weakening';
+  }
+
+  // ── 7. MACD Confirmation Bonus ──────────────────
+  let macdBonus = 0;
+  let macdFlag  = null;
+
+  const dMacd = D?.macdDir;
+  if (dir === 'bull' && dMacd === 'bull') {
+    macdBonus = 5;
+    macdFlag  = 'MACD confirming bullish — momentum aligned';
+  } else if (dir === 'bear' && dMacd === 'bear') {
+    macdBonus = 5;
+    macdFlag  = 'MACD confirming bearish — momentum aligned';
+  } else if (dMacd) {
+    macdBonus = -3;
+    macdFlag  = 'MACD opposing signal direction — caution';
+  }
+
+  // ── 8. Earnings Penalty ─────────────────────────
+  let earningsPenalty = 0;
+  let earningsFlag    = null;
+
+  if (fundamentals?.nextEarnings) {
+    const dte = fundamentals.nextEarnings.dte;
+    const lbl = fundamentals.nextEarnings.label;
+    if (dte <= 3) {
+      earningsPenalty = 25;
+      earningsFlag    = `EARNINGS ${dte === 0 ? 'TODAY' : dte === 1 ? 'TOMORROW' : `IN ${dte} DAYS`} (${lbl}) — DO NOT TRADE`;
+    } else if (dte <= 7) {
+      earningsPenalty = 15;
+      earningsFlag    = `Earnings in ${dte}d (${lbl}) — high binary risk, half size max`;
+    } else if (dte <= 14) {
+      earningsPenalty = 7;
+      earningsFlag    = `Earnings in ${dte}d (${lbl}) — elevated IV, size down`;
+    }
+  }
+
+  // ── Final Score ──────────────────────────────────
+  const raw = rangeScore + alignScore + maturityScore
+    + marketScore + extScore + macdBonus
+    - rsiPenalty - earningsPenalty;
+  const score = Math.max(0, Math.min(100, raw));
+
+  // ── Tier ────────────────────────────────────────
+  let tier, tierLabel, tierColor, recommendation;
+
+  if (rangeFlag?.level === 'BLOCK') {
+    tier         = 'BLOCK';
+    tierLabel    = dir === 'bull'
+      ? '🚫 DO NOT TRADE — Bull Exhausted'
+      : '🚫 DO NOT TRADE — Bear Exhausted';
+    tierColor    = 'red';
+    recommendation = dir === 'bull'
+      ? 'Stock near 52-week highs. Bull move is done. Wait for reversal signal before any trade. Watch for D to turn bearish — then consider call spread.'
+      : 'Stock near 52-week lows. Bear move is done. Wait for recovery signal. Watch for D to turn bullish — then consider put spread.';
+  } else if (earningsPenalty >= 25) {
+    tier         = 'BLOCK';
+    tierLabel    = '🚫 DO NOT TRADE — Earnings Imminent';
+    tierColor    = 'red';
+    recommendation = earningsFlag;
+  } else if (score >= 75) {
+    tier         = 'PRIME';
+    tierLabel    = '🟢 PRIME SETUP — Enter Now';
+    tierColor    = 'green';
+    recommendation = dir === 'bull'
+      ? 'All conditions aligned. Fresh signal, good range position, market supports. Enter full size.'
+      : 'All conditions aligned. Fresh signal, good range position, market supports. Enter full size.';
+  } else if (score >= 55) {
+    tier         = 'GOOD';
+    tierLabel    = '📍 GOOD SETUP — Enter with Confidence';
+    tierColor    = 'green';
+    recommendation = dir === 'bull'
+      ? 'Strong setup. Most conditions met. Enter spread or naked at normal size.'
+      : 'Strong setup. Most conditions met. Enter spread at normal size.';
+  } else if (score >= 40) {
+    tier         = 'MARGINAL';
+    tierLabel    = '⏳ MARGINAL — Small Size Only';
+    tierColor    = 'amber';
+    recommendation = 'Mixed signals. If trading, use small defined-risk spread only. Half size maximum.';
+  } else if (score >= 20) {
+    tier         = 'WEAK';
+    tierLabel    = '⚠ WEAK — Watch Only';
+    tierColor    = 'amber';
+    recommendation = 'Too many conditions not met. Watch for improvement. No trade now.';
+  } else {
+    tier         = 'AVOID';
+    tierLabel    = '🔴 AVOID — No Trade';
+    tierColor    = 'red';
+    recommendation = 'Signal quality too low. Multiple blocking conditions. Sit this one out completely.';
+  }
+
+  // ── What To Watch For ───────────────────────────
+  let watchFor = null;
+  if (tier === 'BLOCK' || tier === 'AVOID' || tier === 'WEAK') {
+    if (dir === 'bull' && rangePos > 0.75) {
+      watchFor = 'Watch for: D turns bearish (▽) → stock corrects → re-enter bull at lower price';
+    } else if (dir === 'bear' && rangePos < 0.25) {
+      watchFor = 'Watch for: D turns bullish (▲) → confirms recovery → then assess bear entry higher';
+    } else if (wSince > 30) {
+      watchFor = `Watch for: W signal resets (since drops to 0) → fresh entry opportunity`;
+    } else if (earningsPenalty > 0) {
+      watchFor = `Watch for: Post-earnings direction. Enter after gap settles (1-2 days post earnings).`;
+    }
+  }
+
+  return {
+    score,
+    tier,
+    tierLabel,
+    tierColor,
+    recommendation,
+    watchFor,
+    rangePos,
+    rangeFlag,
+    alignFlag,
+    maturityFlag,
+    marketFlag,
+    extFlag,
+    rsiFlag,
+    macdFlag,
+    earningsFlag,
+    breakdown: {
+      range:      rangeScore,
+      align:      alignScore,
+      maturity:   maturityScore,
+      market:     marketScore,
+      ext:        extScore,
+      macd:       macdBonus,
+      rsiPenalty: -rsiPenalty,
+      earnings:   -earningsPenalty,
+    }
+  };
+}
+
 // ─── Formatters ───────────────────────────────────────────────────
 export const f$ = (n, d = 2) => "$" + Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
 export const fi$ = (n) => "$" + Math.round(Math.abs(n)).toLocaleString();

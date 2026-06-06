@@ -1,10 +1,10 @@
 import styles from './TabNav.module.css';
 
-export function TabNav({ activeTab, setTab }) {
+export function TabNav({ activeTab, setTab, isPublic }) {
   const tabs = [
-    { id: 'active',  label: 'Active',  icon: '📊' },
+    ...(!isPublic ? [{ id: 'active',  label: 'Active',  icon: '📊' }] : []),
     { id: 'signals', label: 'Signals', icon: '🔍' },
-    { id: 'closed',  label: 'Closed',  icon: '📈' },
+    ...(!isPublic ? [{ id: 'closed',  label: 'Closed',  icon: '📈' }] : []),
   ];
   return (
     <nav className={styles.nav}>
