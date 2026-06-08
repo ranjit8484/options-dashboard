@@ -409,15 +409,21 @@ export function LeapHarvestPanel({ groups, prices, closed, signals, onOpenResear
 
   const items = useMemo(() => {
     const list = [];
-    const filteredGroups = !plat || plat === 'ALL'
+    const platFilter = (!plat || plat === 'ALL') ? null : plat.toUpperCase();
+    const filteredGroups = !platFilter
       ? groups
-      : groups.map(g => ({
-          ...g,
-          pos: g.pos.filter(p => (p.plat || '').toUpperCase() === plat)
-        })).filter(g => g.pos.length > 0);
+      : groups.filter(g =>
+          g.pos.some(p =>
+            (p.dir === 'lc' || p.dir === 'lp') &&
+            (p.dte ?? 0) > 60 &&
+            (p.plat || '').toUpperCase() === platFilter
+          )
+        );
     filteredGroups.forEach(g => {
       const leaps = g.pos.filter(p =>
-        (p.dir === 'lc' || p.dir === 'lp') && (p.dte ?? 0) > 60
+        (p.dir === 'lc' || p.dir === 'lp') &&
+        (p.dte ?? 0) > 60 &&
+        (!platFilter || (p.plat || '').toUpperCase() === platFilter)
       );
       if (!leaps.length) return;
 
@@ -434,10 +440,14 @@ export function LeapHarvestPanel({ groups, prices, closed, signals, onOpenResear
         const leapOpenDate = leap.openDate
           ? new Date(leap.openDate) : null;
         const leapCallPut = isCallLeap ? 'CALL' : 'PUT';
+        const leapPlat = (leap.plat || '').toUpperCase();
         if (closed) {
           closed.forEach(c => {
             const ct = (c.ticker || '').toString().trim().toUpperCase();
             if (ct !== g.t.toUpperCase()) return;
+            // Must match platform
+            const cp = (c.platform || '').toUpperCase();
+            if (leapPlat && cp && cp !== leapPlat) return;
             // Must be opened after the LEAP
             if (leapOpenDate && c.openDate) {
               const tradeOpen = new Date(c.openDate);
@@ -445,7 +455,7 @@ export function LeapHarvestPanel({ groups, prices, closed, signals, onOpenResear
             }
             // Must be same type as LEAP
             if (c.callPut && c.callPut !== leapCallPut) return;
-            // Must be hedge/harvest trade type only — not spreads or directional trades
+            // Must be hedge/harvest trade type only
             const tt = (c.tradeType || '').toLowerCase();
             const isHedge = tt.includes('hedge') || tt.includes('harvest')
               || tt.includes('pmcc') || tt.includes('pmcp')
@@ -504,10 +514,10 @@ export function LeapHarvestPanel({ groups, prices, closed, signals, onOpenResear
       <button
         className={styles.leapHarvestHeader}
         onClick={() => setOpen(o => !o)}>
-        <span>💰 LEAP Harvest</span>
+        <span className={styles.leapHarvestTitle}>💰 LEAP Harvest</span>
         {warnCount > 0 && (
-          <span className={styles.leapHarvestWarn}>
-            {warnCount} need attention
+          <span className={styles.leapHarvestBadge}>
+            {warnCount}
           </span>
         )}
         {warnCount === 0 && (
@@ -578,10 +588,10 @@ export function LeapHarvestPanel({ groups, prices, closed, signals, onOpenResear
                       background: item.paidOff
                         ? '#00C805'
                         : item.offsetPct >= 50
-                        ? 'var(--green)'
+                        ? '#22c55e'
                         : item.offsetPct >= 25
-                        ? 'var(--amber)'
-                        : 'var(--red)'
+                        ? '#f59e0b'
+                        : '#ef4444'
                     }}
                   />
                 </div>

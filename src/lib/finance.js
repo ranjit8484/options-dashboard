@@ -178,6 +178,7 @@ export function parseRows(rows) {
         exp: expFmt, dte, qty, prem,
         plat: platform,
         tradeType: row["Trade Type"] ?? "",
+        openDate: row["Open Date"] ?? null,
         isSpread: true,
         isCalendar,
         note: dte <= 2 ? "Expires soon" : null,
@@ -209,6 +210,7 @@ export function parseRows(rows) {
         exp: expFmt, dte, qty, prem,
         plat: platform,
         tradeType: row["Trade Type"] ?? "",
+        openDate: row["Open Date"] ?? null,
         note: dte <= 2 ? "Expires soon" : null,
       });
     }
