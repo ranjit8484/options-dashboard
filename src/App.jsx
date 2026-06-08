@@ -19,9 +19,10 @@ const STATUS_ORDER = { danger: 0, watch: 1, safe: 2 };
 
 export default function App() {
   // Public mode — hide positions, show signals only
-  const isPublic = new URLSearchParams(
-    window.location.search
-  ).get('public') === 'true';
+  const urlParams = new URLSearchParams(window.location.search);
+  const isPublic  = urlParams.get('view') === 'g2view';
+  const isPrivate = urlParams.get('admin') === 'g2admin';
+  const isLocked  = !isPublic && !isPrivate;
 
   const posData = usePositions();
   const {
@@ -229,6 +230,17 @@ export default function App() {
 
   return (
     <div className={styles.app}>
+      {isLocked && (
+        <div style={{
+          display:'flex', alignItems:'center', justifyContent:'center',
+          height:'100vh', flexDirection:'column', gap:'12px',
+          fontFamily:'monospace', color:'#666'
+        }}>
+          <div style={{fontSize:'24px'}}>🔒</div>
+          <div style={{fontSize:'14px'}}>Access restricted</div>
+        </div>
+      )}
+      {!isLocked && (<>
       {/* ── Header ── */}
       <header className={styles.header}>
         <div className={styles.headerLeft}>
@@ -373,6 +385,7 @@ export default function App() {
         onClose={() => setParamsOpen(false)}
         onSave={p => setParams(p)}
       />}
+      </>)}
     </div>
   );
 }
