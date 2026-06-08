@@ -21,7 +21,7 @@ export default function App() {
   // Public mode — hide positions, show signals only
   const urlParams = new URLSearchParams(window.location.search);
   const isPublic  = urlParams.get('view') === 'g2view';
-  const isPrivate = urlParams.get('admin') === 'g2admin';
+  const isPrivate = urlParams.get('admin') === 'star';
   const isLocked  = !isPublic && !isPrivate;
 
   const posData = usePositions();
