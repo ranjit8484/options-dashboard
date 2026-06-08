@@ -295,8 +295,10 @@ export default function App() {
 
       <TabNav activeTab={activeTab} setTab={setActiveTab} isPublic={isPublic} />
 
-      {/* ── Platform filter — global, controls all tabs ── */}
-      <PlatformFilter plat={plat} setPlat={setPlat} />
+      {/* ── Platform filter — hidden on signals tab ── */}
+      {activeTab !== "signals" && (
+        <PlatformFilter plat={plat} setPlat={setPlat} />
+      )}
 
       {activeTab === "active" && (
         <>

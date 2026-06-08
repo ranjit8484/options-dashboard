@@ -17,8 +17,7 @@ const CONV_ORDER = { full:0, high:1, medium:2, low:3, none:4, exit:5 };
 
 // ── Readiness tier for E19 signal ranking ────────────
 // Returns 0 (best) to 4 (worst) for sorting
-function getReadinessTier(row, fundamentals,
-  spot) {
+function getReadinessTier(row, fundamentals, spot, ticker, signals) {
   const { sig } = row;
   if (!sig) return 4;
 
@@ -28,7 +27,7 @@ function getReadinessTier(row, fundamentals,
     sig,
     fundamentals: fundamentals ?? null,
     spot: spot ?? null,
-    marketSig: null
+    marketSig: ticker && ticker !== 'QQQ' ? (signals?.['QQQ'] ?? null) : null
   });
 
   if (!cs) return 4;
@@ -52,11 +51,11 @@ function getReadinessTier(row, fundamentals,
 
 // Tier labels and styles for display
 const TIER_META = {
-  0: { label: '🟢 READY',    cls: 'tierReady', short: 'READY' },
-  1: { label: '⏳ MARGINAL', cls: 'tierWatch', short: 'WATCH' },
-  2: { label: '◐ WEAK',      cls: 'tierWait',  short: 'WEAK'  },
-  3: { label: '○ AVOID',     cls: 'tierWeak',  short: 'AVOID' },
-  4: { label: '— NO TRADE', cls: 'tierNone',  short: 'NONE'  },
+  0: { label: '🟢 READY',    cls: 'tierReady',    short: 'READY'    },
+  1: { label: '⏳ MARGINAL', cls: 'tierMarginal',  short: 'MARGINAL' },
+  2: { label: '◐ WEAK',      cls: 'tierWeak',      short: 'WEAK'     },
+  3: { label: '○ AVOID',     cls: 'tierAvoid',     short: 'AVOID'    },
+  4: { label: '— No trade',  cls: 'tierNone',      short: 'NO TRADE' },
 };
 
 // ── Exit badge helper for active short positions ──────
@@ -414,7 +413,6 @@ export function SignalsPage({
   const [bucketFilter, setBucketFilter] = useState('ALL');
   const [showFilter,   setShowFilter]   = useState('ALL');
   const [sortBy,       setSortBy]       = useState('readiness');
-  const [signalTab,    setSignalTab]    = useState('signals');
 
   const activeTickers = useMemo(() => groups.map(g => g.t), [groups]);
   const p = params ?? loadParams();
@@ -444,8 +442,16 @@ export function SignalsPage({
       const readinessTier = getReadinessTier(
         { sig, ticker },
         null,
-        null
+        prices?.[ticker] ?? null,
+        ticker,
+        signals
       );
+      const cs = sig ? calcCompositeScore({
+        sig,
+        fundamentals: null,
+        spot: prices?.[ticker] ?? null,
+        marketSig: ticker !== 'QQQ' ? (signals?.['QQQ'] ?? null) : null
+      }) : null;
       return {
         ticker, bucket, sig, isActive,
         thesis, label, conviction,
@@ -453,6 +459,9 @@ export function SignalsPage({
         isOpportunity, isWatch,
         suppressExit,
         readinessTier,
+        score: cs?.score ?? null,
+        scoreTier: cs?.tier ?? null,
+        phase: cs?.phase ?? null,
       };
     });
   }, [watchlist, signals, activeTickers, params]);
@@ -475,8 +484,11 @@ export function SignalsPage({
   const tableRows = useMemo(() => {
     let rows = allRows;
     if (bucketFilter !== 'ALL') rows = rows.filter(r => r.bucket === bucketFilter);
-    if (showFilter === 'ACTIVE') rows = rows.filter(r => r.isActive);
-    if (showFilter === 'WATCH')  rows = rows.filter(r => !r.isActive);
+    if (showFilter === 'ACTIVE')   rows = rows.filter(r => r.isActive);
+    if (showFilter === 'READY')    rows = rows.filter(r => r.readinessTier === 0);
+    if (showFilter === 'MARGINAL') rows = rows.filter(r => r.readinessTier === 1);
+    if (showFilter === 'WEAK')     rows = rows.filter(r => r.readinessTier === 2);
+    if (showFilter === 'NOTRADE')  rows = rows.filter(r => r.readinessTier >= 3);
     return [...rows].sort((a,b) => {
       if (sortBy === 'readiness') {
         const tierDiff = (a.readinessTier ?? 4) - (b.readinessTier ?? 4);
@@ -516,34 +528,7 @@ export function SignalsPage({
       )}
 
       {/* ── Inner tab bar ── */}
-      <div className={styles.innerTabBar}>
-        <button
-          className={`${styles.innerTab} ${signalTab==='signals'?styles.innerTabActive:''}`}
-          onClick={() => setSignalTab('signals')}>
-          📡 Signals
-        </button>
-        <button
-          className={`${styles.innerTab} ${signalTab==='leap'?styles.innerTabActive:''}`}
-          onClick={() => setSignalTab('leap')}>
-          🚀 LEAP Setup
-        </button>
-      </div>
-
-      {signalTab === 'leap' && (
-        <LeapSetupTab
-          allRows={allRows}
-          prices={prices}
-          signals={signals}
-          balances={balances}
-          groups={groups}
-          onOpenResearch={(t,s,pos,fb) =>
-            setResearchTarget({ticker:t,sig:s,
-              activePositions:pos,fallbackSpot:fb})}
-        />
-      )}
-
-      {signalTab === 'signals' && (
-      <>{/* ── All Tickers Table ── */}
+      {/* ── All Tickers Table ── */}
       <div className={styles.section}>
         <div className={styles.sectionHead}>
           <span className={styles.sectionTitle}>All Tickers</span>
@@ -558,11 +543,18 @@ export function SignalsPage({
                 <option key={k} value={k}>Bucket {k} — {b.name}</option>
               ))}
             </select>
-            {['ALL','ACTIVE','WATCH'].map(f => (
-              <button key={f}
-                className={`${styles.filterPill} ${showFilter === f ? styles.filterActive : ''}`}
-                onClick={() => setShowFilter(f)}>
-                {f === 'ALL' ? 'All' : f === 'ACTIVE' ? '● Active' : '✦ New Trades'}
+            {[
+              { id:'ALL',      label:'All' },
+              { id:'ACTIVE',   label:'● Active' },
+              { id:'READY',    label:'🟢 Ready' },
+              { id:'MARGINAL', label:'⏳ Marginal' },
+              { id:'WEAK',     label:'◐ Weak' },
+              { id:'NOTRADE',  label:'— No trade' },
+            ].map(f => (
+              <button key={f.id}
+                className={`${styles.filterPill} ${showFilter === f.id ? styles.filterActive : ''}`}
+                onClick={() => setShowFilter(f.id)}>
+                {f.label}
               </button>
             ))}
             <select
@@ -584,7 +576,7 @@ export function SignalsPage({
               <tr>
                 <th>Ticker</th>
                 <th>Bkt</th>
-                <th>Status</th>
+                <th>Score</th>
                 <th>Thesis</th>
                 <th>Trade</th>
                 <th>W</th>
@@ -625,6 +617,8 @@ export function SignalsPage({
                       groups={groups}
                       signals={signals}
                       readinessTier={r.readinessTier}
+                      score={r.score}
+                      phase={r.phase}
                       onOpenResearch={(t, s, positions, fallback) =>
                         setResearchTarget({
                           ticker: t,
@@ -645,7 +639,6 @@ export function SignalsPage({
           )}
         </div>
       </div>
-      </>)}
 
       {/* ── Research Card ── */}
       {researchTarget && (
@@ -670,7 +663,7 @@ function TableRow({
   ticker, bucket, sig, isActive, thesis, label,
   conviction, violations, isBlocked, isOpportunity,
   signalsLoading, onOpenResearch, prices, groups,
-  readinessTier,
+  readinessTier, score, phase,
   // legacy row prop support
   row,
 }) {
@@ -693,11 +686,14 @@ function TableRow({
   const fallbackSpot = prices?.[ticker]
     ?? activePos[0]?.k ?? null;
 
+  const tierRowCls = readinessTier === 0 ? styles.rowReady
+    : readinessTier === 1 ? styles.rowMarginal
+    : readinessTier >= 3 ? styles.rowNoTrade
+    : '';
   const rowCls = [
     styles.tableRow,
-    isActive      ? styles.rowActive   : '',
-    isOpportunity ? styles.rowOpp      : '',
-    isBlocked && !isActive ? styles.rowBlocked : '',
+    isActive ? styles.rowActive : '',
+    tierRowCls,
   ].join(' ');
 
   return (
@@ -708,10 +704,19 @@ function TableRow({
       </td>
       <td><span className={styles.bucketPill}>{bucket}</span></td>
       <td>
-        {isOpportunity && <span className={styles.statusOpp}>🔥</span>}
-        {isBlocked && !isActive && <span className={styles.statusBlock}>⚠</span>}
-        {isActive && <span className={styles.statusActive}>Active</span>}
-        {!isOpportunity && !isBlocked && !isActive && <span className={styles.statusWatch}>—</span>}
+        {score !== null && score !== undefined ? (
+          <span className={`${styles.scoreChip} ${
+            readinessTier === 0 ? styles.scoreChipGreen
+            : readinessTier === 1 ? styles.scoreChipAmber
+            : readinessTier >= 3 ? styles.scoreChipRed
+            : styles.scoreChipGrey
+          }`}>
+            {score}
+          </span>
+        ) : (
+          <span className={styles.scoreChipGrey}>—</span>
+        )}
+        {isActive && <span className={styles.activeDot}>●</span>}
       </td>
       <td>
         <button

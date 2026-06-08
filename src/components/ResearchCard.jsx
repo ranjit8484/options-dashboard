@@ -263,9 +263,6 @@ function ScorePanel({ score }) {
         <span className={styles.scoreTierLabel}>
           {score.tierLabel}
         </span>
-        <span className={styles.scoreNumber}>
-          {score.score}/100
-        </span>
       </div>
 
       {/* Recommendation */}
@@ -277,6 +274,51 @@ function ScorePanel({ score }) {
       {score.watchFor && (
         <div className={styles.scoreWatch}>
           {score.watchFor}
+        </div>
+      )}
+
+      {/* Reversal trigger checklist — only on BLOCK tier */}
+      {score.tier === 'BLOCK' && score.phase?.phase === 1 && (
+        <div className={styles.triggerList}>
+          <div className={styles.triggerHeader}>
+            Reversal watch — staged entry triggers
+          </div>
+          {[
+            {
+              num: 1,
+              title: '1H turns bullish',
+              desc: '1H xs ≥ 1 AND 1H RSI crosses above 40',
+              trade: score.rangePos < 0.3
+                ? 'Probe: sell put spread 5% OTM · small size'
+                : 'Probe: sell call spread 5% OTM · small size',
+              state: 'watch'
+            },
+            {
+              num: 2,
+              title: '4H confirms',
+              desc: '4H xs ≥ 1 AND price closes above D Kijun',
+              trade: 'Entry: normal size spread · 14-21 DTE',
+              state: 'wait'
+            },
+            {
+              num: 3,
+              title: 'D turns',
+              desc: 'D xs ≥ 1 AND W signal resets',
+              trade: 'Add size or LEAP if already in from trigger 1/2',
+              state: 'wait'
+            },
+          ].map((t, i) => (
+            <div key={i} className={`${styles.triggerItem} ${styles[`trigger_${t.state}`]}`}>
+              <span className={`${styles.triggerNum} ${styles[`triggerNum_${t.state}`]}`}>
+                {t.num}
+              </span>
+              <div className={styles.triggerText}>
+                <div className={styles.triggerTitle}>{t.title}</div>
+                <div className={styles.triggerDesc}>{t.desc}</div>
+                <div className={styles.triggerTrade}>{t.trade}</div>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -946,7 +988,7 @@ function SpreadTab({ ticker, spot, isBull, conviction, account, params, ivOverri
 function TradeRecommendationTab({
   ticker, spot, isBull, conviction,
   account, params, ivOverride, sig,
-  fundamentals, compositeScore
+  fundamentals, compositeScore, earningsDte
 }) {
   const isCall = !isBull;
   const iv = ivOverride / 100;
@@ -998,6 +1040,35 @@ function TradeRecommendationTab({
 
   return (
     <div className={styles.tabContent}>
+
+      {/* Earnings window guidance */}
+      {earningsDte <= 14 && earningsDte > 2 && (
+        <div className={styles.earningsBanner}>
+          <div className={styles.earningsBannerTitle}>
+            📅 Earnings in {earningsDte}d — two strategies available
+          </div>
+          <div className={styles.earningsOptA}>
+            <div className={styles.earningsOptLabel}>
+              Option A — Pre-earnings IV harvest
+              <span className={styles.earningsOptTag}>Close before earnings</span>
+            </div>
+            <div className={styles.earningsOptDesc}>
+              Enter spread now, collect elevated IV premium, close 1 day before announcement.
+              Never take the binary gap risk — close regardless of P&L.
+            </div>
+          </div>
+          <div className={styles.earningsOptB}>
+            <div className={styles.earningsOptLabel}>
+              Option B — Post-earnings direction play
+              <span className={styles.earningsOptTag}>Wait for gap</span>
+            </div>
+            <div className={styles.earningsOptDesc}>
+              Wait for earnings reaction. Enter 1-2 days after gap settles.
+              Only enter if signal direction confirmed by the gap.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Best fit */}
       <div className={styles.tradeSection}>
@@ -1263,6 +1334,109 @@ function TradeRecommendationTab({
       <div className={styles.exitRule}>
         Exit: close at 50% profit or 7 DTE ·
         Roll if breached with 5+ DTE remaining
+      </div>
+    </div>
+  );
+}
+
+function ProbeTab({ ticker, spot, isBull, sig, compositeScore }) {
+  const phase = compositeScore?.phase;
+  const h1Xs  = sig?.['1H']?.xs ?? 0;
+  const h4Xs  = sig?.['4H']?.xs ?? 0;
+  const dXs   = sig?.D?.xs ?? 0;
+  const dKijun = sig?.D?.kijun ?? 0;
+
+  const trigger1Done = isBull ? h1Xs >= 1 : h1Xs <= -1;
+  const trigger2Done = isBull ? h4Xs >= 1 : h4Xs <= -1;
+  const trigger3Done = isBull ? dXs  >= 1 : dXs  <= -1;
+
+  const spreadType = isBull ? 'put credit spread' : 'call credit spread';
+  const probeStrike = spot
+    ? (isBull
+        ? `$${Math.round(spot * 0.92)}/$${Math.round(spot * 0.87)}`
+        : `$${Math.round(spot * 1.08)}/$${Math.round(spot * 1.13)}`)
+    : '—';
+
+  const triggers = [
+    {
+      num: 1,
+      title: isBull ? '1H turns bullish' : '1H turns bearish',
+      desc: isBull
+        ? '1H xs ≥ 1 AND 1H RSI crosses above 40'
+        : '1H xs ≤ -1 AND 1H RSI crosses below 60',
+      trade: `Probe: sell ${probeStrike} ${spreadType} · 14 DTE · 1 contract max`,
+      state: trigger1Done ? 'done' : 'watch',
+    },
+    {
+      num: 2,
+      title: isBull ? '4H confirms bullish' : '4H confirms bearish',
+      desc: isBull
+        ? `4H xs ≥ 1 AND price closes above D Kijun ($${Math.round(dKijun)})`
+        : `4H xs ≤ -1 AND price closes below D Kijun ($${Math.round(dKijun)})`,
+      trade: `Entry: normal size ${spreadType} · 14-21 DTE`,
+      state: trigger2Done ? 'done' : trigger1Done ? 'watch' : 'wait',
+    },
+    {
+      num: 3,
+      title: isBull ? 'D turns bullish' : 'D turns bearish',
+      desc: 'Full reversal confirmed — D signal flips direction',
+      trade: 'Add size · consider LEAP if already in from trigger 1/2',
+      state: trigger3Done ? 'done' : trigger2Done ? 'watch' : 'wait',
+    },
+  ];
+
+  const stateIcon  = { done:'✓', watch:'→', wait:'○' };
+  const stateCls   = {
+    done:  styles.triggerDone,
+    watch: styles.triggerWatch,
+    wait:  styles.triggerWait,
+  };
+  const stateNumCls = {
+    done:  styles.triggerNumDone,
+    watch: styles.triggerNumWatch,
+    wait:  styles.triggerNumWait,
+  };
+
+  return (
+    <div className={styles.tabContent}>
+      <div className={styles.probeBanner}>
+        <div className={styles.probeBannerTitle}>
+          🔵 Testing waters — {isBull ? 'bear exhausted' : 'bull exhausted'}, watching for reversal
+        </div>
+        <div className={styles.probeBannerDesc}>
+          {phase?.reason ?? 'Move largely done. Small probe trade only — defined risk, opposite direction.'}
+          {' '}Max loss $150-200 per contract.
+        </div>
+      </div>
+
+      <div className={styles.triggerListWrap}>
+        <div className={styles.triggerListLabel}>
+          Staged entry triggers — act when each fires
+        </div>
+        {triggers.map((t, i) => (
+          <div key={i} className={`${styles.triggerItem} ${stateCls[t.state]}`}>
+            <span className={`${styles.triggerNum} ${stateNumCls[t.state]}`}>
+              {stateIcon[t.state]}
+            </span>
+            <div className={styles.triggerText}>
+              <div className={styles.triggerTitle}>
+                {t.title}
+                {t.state === 'done' && (
+                  <span className={styles.triggerFired}> — FIRED</span>
+                )}
+                {t.state === 'watch' && (
+                  <span className={styles.triggerWatching}> — watching now</span>
+                )}
+              </div>
+              <div className={styles.triggerDesc}>{t.desc}</div>
+              <div className={styles.triggerTrade}>{t.trade}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className={styles.exitRule}>
+        Probe trades: close at 50% profit · max 1 contract · hard stop at 7 DTE
       </div>
     </div>
   );
@@ -1588,7 +1762,7 @@ function LeapTab({ ticker, spot, isBull, sig, fundamentals }) {
 // ── Main export ───────────────────────────────────────────────────
 export function ResearchCard({
   ticker, spot: spotProp, sig, onClose,
-  activePositions, balances
+  activePositions, balances, allSignals
 }) {
   const params  = loadParams();
   const account = (balances?.rh??0) + (balances?.fid??0);
@@ -1622,7 +1796,7 @@ export function ResearchCard({
       sig,
       fundamentals,
       spot,
-      marketSig: null
+      marketSig: ticker !== 'QQQ' ? (allSignals?.['QQQ'] ?? null) : null
     });
   }, [sig, fundamentals, spot]);
 
@@ -1637,18 +1811,32 @@ export function ResearchCard({
 
   const hasPositions = activePositions?.length > 0;
   const scoreTier = compositeScore?.tier;
-  const tradeAllowed = scoreTier === 'PRIME'
-    || scoreTier === 'GOOD'
-    || scoreTier === 'MARGINAL';
-  const noTrade = !tradeAllowed && !hasPositions;
+  const phase = compositeScore?.phase;
+  const earningsDte = fundamentals?.nextEarnings?.dte ?? 999;
+
+  // Tab visibility logic
+  const isHardBlock = scoreTier === 'BLOCK'
+    && earningsDte <= 2;
+  const isEarningsWindow = earningsDte > 2 && earningsDte <= 14;
+  const isProbe = (scoreTier === 'BLOCK' || scoreTier === 'AVOID')
+    && earningsDte > 2
+    && (phase?.phase === 1 || phase?.probeAllowed === true);
+  const tradeAllowed = !isHardBlock
+    && !isProbe
+    && (scoreTier === 'PRIME'
+      || scoreTier === 'GOOD'
+      || scoreTier === 'MARGINAL');
 
   const defaultTab = 'why';
   const [activeTab, setActiveTab] = useState(defaultTab);
 
   const tabs = [
-    { id:'why',   label:'📋 Thesis' },
+    { id:'why', label:'📋 Thesis' },
+    ...(isProbe
+      ? [{ id:'probe', label:'🔵 Probe trade' }]
+      : []),
     ...(tradeAllowed
-      ? [{ id:'trade', label:'💡 Trade' }]
+      ? [{ id:'trade', label: isEarningsWindow ? '📅 Trade + earnings' : '💡 Trade' }]
       : []),
     ...(hasPositions
       ? [{ id:'manage', label:`⚡ Manage (${activePositions.length})` }]
@@ -1663,35 +1851,59 @@ export function ResearchCard({
         <div className={styles.cardHeader}>
           <div className={styles.cardHeaderLeft}>
             <span className={styles.cardTicker}>{ticker}</span>
-            <span className={`${styles.convBadge} ${styles[`conv_${conviction}`]}`}>
-              {CONVICTION_LABELS[conviction]??conviction}
-            </span>
-            <span className={styles.cardThesis}>{thesis}</span>
-            {fundamentals && (() => {
-              const bd = calcBackdrop(fundamentals, isBull, spot);
-              if (!bd) return null;
-              const cls = {
-                STRONG:   styles.hdrBdStrong,
-                SUPPORTS: styles.hdrBdSupports,
-                NEUTRAL:  styles.hdrBdNeutral,
-                CAUTION:  styles.hdrBdCaution,
-                AGAINST:  styles.hdrBdAgainst,
-              }[bd.rating] ?? styles.hdrBdNeutral;
+            {/* Direction + fundamentals combined pill */}
+            {(() => {
+              const bd = fundamentals
+                ? calcBackdrop(fundamentals, isBull, spot)
+                : null;
+              const dirLabel = isBull ? '↑ Bull' : '↓ Bear';
+              const dirCls   = isBull ? styles.hdrPillBull : styles.hdrPillBear;
+              const fundAgrees = bd && (
+                (isBull  && (bd.rating === 'STRONG' || bd.rating === 'SUPPORTS')) ||
+                (!isBull && (bd.rating === 'STRONG' || bd.rating === 'SUPPORTS'))
+              );
+              const fundOpposes = bd && bd.rating === 'AGAINST';
+              const combined = fundAgrees
+                ? `${dirLabel} — confirmed`
+                : fundOpposes
+                ? `${dirLabel} — conflicted ⚠`
+                : dirLabel;
               return (
-                <span className={`${styles.hdrBdBadge} ${cls}`}>
-                  {bd.rating === 'STRONG'   ? '✅ Strong'
-                  :bd.rating === 'SUPPORTS' ? '✓ Supports'
-                  :bd.rating === 'NEUTRAL'  ? '○ Neutral'
-                  :bd.rating === 'CAUTION'  ? '⚠ Caution'
-                  : '🚫 Against'}
+                <span className={`${styles.hdrPill} ${dirCls} ${fundOpposes ? styles.hdrPillConflict : ''}`}>
+                  {combined}
                 </span>
               );
             })()}
+            {/* Conviction pill */}
+            <span className={`${styles.hdrPill} ${styles.hdrPillConviction} ${styles[`conv_${conviction}`]}`}>
+              🎯 {CONVICTION_LABELS[conviction] ?? conviction} conviction
+            </span>
+            {/* Phase pill */}
+            {compositeScore?.phase && compositeScore.phase.phase > 0 && (
+              <span className={`${styles.hdrPill} ${styles.hdrPillPhase}`}>
+                {compositeScore.phase.emoji} {compositeScore.phase.label}
+              </span>
+            )}
+            {/* Active position pill */}
             {hasPositions && (
-              <span className={styles.activePill}>● Active</span>
+              <span className={`${styles.hdrPill} ${styles.hdrPillActive}`}>
+                ● Active position
+              </span>
             )}
           </div>
           <div className={styles.cardHeaderRight}>
+            {compositeScore && (
+              <div className={`${styles.scoreBadge} ${
+                compositeScore.tierColor === 'green' ? styles.scoreBadgeGreen
+                : compositeScore.tierColor === 'amber' ? styles.scoreBadgeAmber
+                : styles.scoreBadgeRed
+              }`}>
+                <span className={styles.scoreBadgeNum}>
+                  {compositeScore.score}
+                </span>
+                <span className={styles.scoreBadgeDen}>/100</span>
+              </div>
+            )}
             <span className={styles.cardPrice}>
               {spot ? `$${spot.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : '—'}
             </span>
@@ -1723,6 +1935,25 @@ export function ResearchCard({
           {activeTab==='why' && (
             <div className={styles.tabContent}>
               <ContextPanel context={context} />
+              {/* Signal chips row */}
+              <div className={styles.sigChipsRow}>
+                {['W','D','4H','1H'].map(tf => {
+                  const s = sig?.[tf];
+                  const xs = s?.xs ?? 0;
+                  const since = s?.since ?? 0;
+                  const sym = xs===2?'🚀':xs===1?'▲':xs===-1?'▽':xs===-2?'☄️':'·';
+                  const cls = xs>=2 ? styles.chipBull2
+                    : xs>=1 ? styles.chipBull1
+                    : xs<=-2 ? styles.chipBear2
+                    : xs<=-1 ? styles.chipBear1
+                    : styles.chipNeutral;
+                  return (
+                    <span key={tf} className={`${styles.sigChip} ${cls}`}>
+                      {tf} {sym}{since > 1 ? ` (${since >= 100 ? '99+' : since})` : ''}
+                    </span>
+                  );
+                })}
+              </div>
               <ScorePanel score={compositeScore} />
               <FundamentalBackdrop
                 ticker={ticker}
@@ -1744,6 +1975,16 @@ export function ResearchCard({
               ivOverride={ivOverride}
               sig={sig}
               fundamentals={fundamentals}
+              compositeScore={compositeScore}
+              earningsDte={earningsDte}
+            />
+          )}
+          {activeTab==='probe' && (
+            <ProbeTab
+              ticker={ticker}
+              spot={spot}
+              isBull={isBull}
+              sig={sig}
               compositeScore={compositeScore}
             />
           )}

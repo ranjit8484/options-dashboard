@@ -810,6 +810,152 @@
   background: var(--bg2);
 }
 
+/* ── New header pills ─────────────────── */
+.hdrPill {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+  padding: 3px 9px; border-radius: 99px;
+  letter-spacing: .03em;
+}
+.hdrPillBull { background: rgba(34,197,94,.12); color: var(--green); }
+.hdrPillBear { background: rgba(239,68,68,.12); color: var(--red); }
+.hdrPillConflict { background: rgba(245,158,11,.12); color: var(--amber); }
+.hdrPillConviction { background: var(--bg3); color: var(--text2); }
+.hdrPillActive { background: rgba(99,102,241,.12); color: var(--accent); }
+
+/* ── Score badge in header ────────────── */
+.scoreBadge {
+  display: flex; align-items: baseline; gap: 2px;
+  padding: 4px 10px; border-radius: var(--radius-sm);
+}
+.scoreBadgeGreen { background: rgba(34,197,94,.12); }
+.scoreBadgeAmber { background: rgba(245,158,11,.12); }
+.scoreBadgeRed   { background: rgba(239,68,68,.12); }
+.scoreBadgeNum {
+  font-family: var(--mono); font-size: 22px; font-weight: 800; line-height: 1;
+}
+.scoreBadgeGreen .scoreBadgeNum { color: var(--green); }
+.scoreBadgeAmber .scoreBadgeNum { color: var(--amber); }
+.scoreBadgeRed   .scoreBadgeNum { color: var(--red);   }
+.scoreBadgeDen {
+  font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--text3);
+}
+
+/* ── Signal chips on thesis tab ───────── */
+.sigChipsRow {
+  display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 4px;
+}
+.sigChip {
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  padding: 3px 10px; border-radius: 99px;
+}
+.chipBull2 { background: rgba(34,197,94,.15); color: var(--green); }
+.chipBull1 { background: rgba(34,197,94,.08); color: var(--green); }
+.chipBear2 { background: rgba(239,68,68,.15); color: var(--red);   }
+.chipBear1 { background: rgba(239,68,68,.08); color: var(--red);   }
+.chipNeutral { background: var(--bg3); color: var(--text3); }
+
+/* ── Reversal trigger checklist ───────── */
+.triggerList {
+  border-top: 1px solid var(--border);
+  padding: 10px 14px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.triggerHeader {
+  font-family: var(--mono); font-size: 9px; font-weight: 700;
+  color: var(--text3); letter-spacing: .08em; text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.triggerItem {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 8px 10px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--bg2);
+}
+.trigger_watch { border-color: rgba(245,158,11,.3); background: rgba(245,158,11,.04); }
+.trigger_wait  { border-color: var(--border); background: var(--bg2); opacity: 0.7; }
+.trigger_done  { border-color: rgba(34,197,94,.3); background: rgba(34,197,94,.04); }
+.triggerNum {
+  width: 20px; height: 20px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  flex-shrink: 0;
+}
+.triggerNum_watch { background: rgba(245,158,11,.15); color: var(--amber); }
+.triggerNum_wait  { background: var(--bg3); color: var(--text3); }
+.triggerNum_done  { background: rgba(34,197,94,.15); color: var(--green); }
+.triggerText { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.triggerTitle { font-size: 12px; font-weight: 700; color: var(--text); }
+.triggerDesc  { font-size: 11px; color: var(--text3); }
+.triggerTrade { font-size: 11px; color: var(--accent2); font-weight: 600; margin-top: 2px; }
+
+.hdrPillPhase {
+  background: rgba(99,102,241,.1);
+  color: var(--accent);
+}
+
+.probeBanner {
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  background: rgba(59,130,246,.06);
+  border: 1px solid rgba(59,130,246,.2);
+  display: flex; flex-direction: column; gap: 4px;
+  margin-bottom: 4px;
+}
+.probeBannerTitle {
+  font-family: var(--mono); font-size: 12px; font-weight: 700;
+  color: var(--accent2);
+}
+.probeBannerDesc {
+  font-size: 12px; color: var(--text2); line-height: 1.5;
+}
+
+.triggerListWrap {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.triggerListLabel {
+  font-family: var(--mono); font-size: 9px; font-weight: 700;
+  color: var(--text3); letter-spacing: .08em; text-transform: uppercase;
+  margin-bottom: 2px;
+}
+.triggerDone  { background: rgba(34,197,94,.05);  border-color: rgba(34,197,94,.2);  }
+.triggerWatch { background: rgba(245,158,11,.05); border-color: rgba(245,158,11,.25); }
+.triggerWait  { background: var(--bg2); opacity: 0.65; }
+.triggerNumDone  { background: rgba(34,197,94,.15);  color: var(--green); }
+.triggerNumWatch { background: rgba(245,158,11,.15); color: var(--amber); }
+.triggerNumWait  { background: var(--bg3); color: var(--text3); }
+.triggerFired    { color: var(--green); font-weight: 700; }
+.triggerWatching { color: var(--amber); font-weight: 400; font-size: 11px; }
+
+.earningsBanner {
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(59,130,246,.25);
+  background: rgba(59,130,246,.04);
+  overflow: hidden; margin-bottom: 8px;
+}
+.earningsBannerTitle {
+  font-family: var(--mono); font-size: 11px; font-weight: 700;
+  color: var(--accent2); padding: 8px 12px;
+  border-bottom: 1px solid rgba(59,130,246,.15);
+  background: rgba(59,130,246,.06);
+}
+.earningsOptA, .earningsOptB {
+  padding: 8px 12px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.earningsOptA { border-bottom: 1px solid rgba(59,130,246,.1); }
+.earningsOptLabel {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12px; font-weight: 700; color: var(--text);
+}
+.earningsOptTag {
+  font-family: var(--mono); font-size: 9px; font-weight: 700;
+  padding: 2px 7px; border-radius: 3px;
+  background: rgba(245,158,11,.1); color: var(--amber);
+}
+.earningsOptDesc {
+  font-size: 11px; color: var(--text3); line-height: 1.5;
+}
+
 @media (max-width: 600px) {
 
   /* Full screen card on mobile */

@@ -694,11 +694,157 @@ export function calcIchimoku(candles) {
   return { xs, signal, isNew: tkCross, cloudBull, priceVsCloud, tenkan, kijun, kijunDist };
 }
 
+// ─── Phase Detection ──────────────────────────────────────────────
+// Detects which phase of the market cycle a stock is in
+// Returns phase object used by calcCompositeScore and ResearchCard
+export function calcPhase({ sig, fundamentals, spot }) {
+  if (!sig || !spot) return null;
+
+  const W      = sig.W;
+  const D      = sig.D;
+  const wXs    = W?.xs    ?? 0;
+  const dXs    = D?.xs    ?? 0;
+  const wSince = W?.since ?? 0;
+  const wKijun = W?.kijunDist ?? 0;
+  const wRsiDiv = W?.rsiDivergence ?? false;
+  const dRsiDiv = D?.rsiDivergence ?? false;
+
+  const dir = wXs >= 1 ? 'bull' : wXs <= -1 ? 'bear' : 'neutral';
+
+  let rangePos = null;
+  if (fundamentals?.range52 && spot) {
+    const { low, high } = fundamentals.range52;
+    const range = high - low;
+    if (range > 0) rangePos = (spot - low) / range;
+  }
+
+  const absKijun    = Math.abs(wKijun);
+  const rsiDiverge  = wRsiDiv || dRsiDiv;
+  const wdAligned   = (wXs >= 1 && dXs >= 1) || (wXs <= -1 && dXs <= -1);
+
+  // ── Phase 4: EXHAUSTION — check first, highest priority ──
+  const rangeExhausted = rangePos !== null && (
+    (dir === 'bull' && rangePos > 0.80) ||
+    (dir === 'bear' && rangePos < 0.20)
+  );
+  const kijunExhausted = absKijun > 20;
+  if (rangeExhausted || kijunExhausted) {
+    const reason = rangeExhausted
+      ? `Price at ${Math.round((rangePos??0)*100)}% of 52wk range — move largely done`
+      : `${wKijun > 0 ? '+' : ''}${wKijun.toFixed(1)}% from Kijun — dangerously extended`;
+    return {
+      phase: 4,
+      label: 'EXHAUSTION',
+      emoji: '🔴',
+      color: 'red',
+      reason,
+      action: 'DO NOT ENTER — move overdone',
+      probeAllowed: false,
+      tradeSize: 'none',
+    };
+  }
+
+  // ── Phase 1: ACCUMULATION — near lows/highs, signal weak/new ──
+  const nearExtreme = rangePos !== null && (
+    (dir === 'bear' && rangePos < 0.15) ||
+    (dir === 'bull' && rangePos < 0.15)
+  );
+  const signalNew = wSince <= 2;
+  if (nearExtreme && signalNew) {
+    return {
+      phase: 1,
+      label: 'ACCUMULATION',
+      emoji: '🔵',
+      color: 'blue',
+      reason: nearExtreme
+        ? `Price at ${Math.round((rangePos??0)*100)}% of range — potential base forming`
+        : 'Signal very new, price near Kijun — early stage',
+      action: 'Probe trade only — small debit spread to test direction',
+      probeAllowed: true,
+      tradeSize: 'probe',
+      probeTrade: dir === 'bull'
+        ? 'Small call debit spread — $1-2 max loss per share'
+        : 'Small put debit spread — $1-2 max loss per share',
+    };
+  }
+
+  // ── Phase 5: DISTRIBUTION/REVERSAL — fresh counter signal ──
+  const freshReversal = wSince >= 1 && wSince <= 4;
+  const rangeHighForBear = rangePos !== null && dir === 'bear' && rangePos > 0.60;
+  const rangeLowForBull  = rangePos !== null && dir === 'bull' && rangePos > 0.55;
+  if (freshReversal && (rangeHighForBear || rangeLowForBull)) {
+    return {
+      phase: 5,
+      label: 'REVERSAL',
+      emoji: '🟠',
+      color: 'orange',
+      reason: `Fresh ${dir === 'bear' ? 'bear' : 'bull'} signal at ${Math.round((rangePos??0)*100)}% of range — potential trend change`,
+      action: 'Early reversal entry — spread only, confirm with D alignment',
+      probeAllowed: true,
+      tradeSize: 'small',
+    };
+  }
+
+  // ── Phase 2: EARLY TREND — fresh signal, good range, aligned ──
+  const goodRange = rangePos !== null && (
+    (dir === 'bear' && rangePos >= 0.35 && rangePos <= 0.75) ||
+    (dir === 'bull' && rangePos >= 0.25 && rangePos <= 0.65)
+  );
+  const signalFresh = wSince >= 2 && wSince <= 7;
+  if (signalFresh && wdAligned && (goodRange || rangePos === null)) {
+    return {
+      phase: 2,
+      label: 'EARLY TREND',
+      emoji: '🟢',
+      color: 'green',
+      reason: `Fresh W signal (${wSince} candles), W+D aligned — trend just starting`,
+      action: 'Standard spread entry — best risk/reward window',
+      probeAllowed: false,
+      tradeSize: 'normal',
+    };
+  }
+
+  // ── Phase 3: MOMENTUM — established signal, good range ──
+  const signalEstablished = wSince > 7 && wSince <= 30;
+  if (signalEstablished && wdAligned) {
+    const rsiCaution = rsiDiverge
+      ? ' — RSI diverging, reduce size' : '';
+    return {
+      phase: 3,
+      label: 'MOMENTUM',
+      emoji: '🟡',
+      color: 'yellow',
+      reason: `W signal ${wSince} candles — established trend running${rsiCaution}`,
+      action: rsiDiverge
+        ? 'Spread only, half size — RSI diverging, momentum weakening'
+        : wSince <= 15
+        ? 'Full size spread or naked if conviction high'
+        : 'Spread only — trend maturing, reduce size slightly',
+      probeAllowed: false,
+      tradeSize: rsiDiverge ? 'reduced' : wSince <= 15 ? 'full' : 'reduced',
+      rsiCaution: rsiDiverge,
+    };
+  }
+
+  // ── Default: signal not clear enough ──
+  return {
+    phase: 0,
+    label: 'UNCLEAR',
+    emoji: '⚪',
+    color: 'grey',
+    reason: 'Signal alignment insufficient for phase classification',
+    action: 'Wait for clearer W+D alignment',
+    probeAllowed: false,
+    tradeSize: 'none',
+  };
+}
+
 // ─── Composite Score ──────────────────────────────────────────────
 export function calcCompositeScore({
   sig, fundamentals, spot, marketSig
 }) {
   if (!sig || !spot) return null;
+  const phase = calcPhase({ sig, fundamentals, spot });
 
   const W   = sig.W;
   const D   = sig.D;
@@ -963,27 +1109,45 @@ export function calcCompositeScore({
       : '🚫 DO NOT TRADE — Bear Exhausted';
     tierColor    = 'red';
     recommendation = dir === 'bull'
-      ? 'Stock near 52-week highs. Bull move is done. Wait for reversal signal before any trade. Watch for D to turn bearish — then consider call spread.'
-      : 'Stock near 52-week lows. Bear move is done. Wait for recovery signal. Watch for D to turn bullish — then consider put spread.';
+      ? 'Stock near 52-week highs. Bull move is done. Wait for reversal signal. Watch for D to turn bearish — then consider call spread.'
+      : 'Stock near 52-week lows. Bear move is done. Consider small probe trade in OPPOSITE direction. Watch for D to turn bullish.';
   } else if (earningsPenalty >= 25) {
     tier         = 'BLOCK';
     tierLabel    = '🚫 DO NOT TRADE — Earnings Imminent';
     tierColor    = 'red';
     recommendation = earningsFlag;
   } else if (score >= 75) {
-    tier         = 'PRIME';
-    tierLabel    = '🟢 PRIME SETUP — Enter Now';
-    tierColor    = 'green';
-    recommendation = dir === 'bull'
-      ? 'All conditions aligned. Fresh signal, good range position, market supports. Enter full size.'
-      : 'All conditions aligned. Fresh signal, good range position, market supports. Enter full size.';
+    tier      = 'PRIME';
+    tierColor = 'green';
+    if (phase?.phase === 4) {
+      tierLabel = `🔴 HIGH SCORE — ${phase.emoji} ${phase.label}`;
+      tierColor = 'red';
+      recommendation = phase.action;
+    } else if (phase?.phase === 1) {
+      tierLabel = `🔵 PRIME — ${phase.emoji} ${phase.label}`;
+      recommendation = phase.action;
+    } else {
+      const phaseLabel = phase ? ` — ${phase.emoji} ${phase.label}` : '';
+      tierLabel = `🟢 PRIME SETUP${phaseLabel}`;
+      recommendation = phase?.action
+        ?? 'All conditions aligned. Fresh signal, good range position. Enter full size.';
+    }
   } else if (score >= 55) {
-    tier         = 'GOOD';
-    tierLabel    = '📍 GOOD SETUP — Enter with Confidence';
-    tierColor    = 'green';
-    recommendation = dir === 'bull'
-      ? 'Strong setup. Most conditions met. Enter spread or naked at normal size.'
-      : 'Strong setup. Most conditions met. Enter spread at normal size.';
+    tier      = 'GOOD';
+    tierColor = 'green';
+    if (phase?.phase === 4) {
+      tierLabel = `⚠ GOOD SCORE — ${phase.emoji} ${phase.label}`;
+      tierColor = 'amber';
+      recommendation = phase.action;
+    } else if (phase?.phase === 1) {
+      tierLabel = `🔵 GOOD — ${phase.emoji} ${phase.label}`;
+      recommendation = phase.action;
+    } else {
+      const phaseLabel = phase ? ` — ${phase.emoji} ${phase.label}` : '';
+      tierLabel = `📍 GOOD SETUP${phaseLabel}`;
+      recommendation = phase?.action
+        ?? 'Strong setup. Most conditions met. Enter spread at normal size.';
+    }
   } else if (score >= 40) {
     tier         = 'MARGINAL';
     tierLabel    = '⏳ MARGINAL — Small Size Only';
@@ -1022,6 +1186,7 @@ export function calcCompositeScore({
     tierColor,
     recommendation,
     watchFor,
+    phase,
     rangePos,
     rangeFlag,
     alignFlag,

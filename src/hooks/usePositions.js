@@ -128,7 +128,7 @@ export function usePositions() {
       setLastUpdated(new Date());
     }
     // Auto-fetch live prices after positions load
-    const tickers = parsed.map(g => g.t);
+    const tickers = parsed.map(g => g.t).slice(0, 8);
     refreshPrices(tickers);
   }, [refreshPrices]);
 
