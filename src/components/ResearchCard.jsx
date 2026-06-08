@@ -993,7 +993,8 @@ function SpreadTab({ ticker, spot, isBull, conviction, account, params, ivOverri
 function TradeRecommendationTab({
   ticker, spot, isBull, conviction,
   account, params, ivOverride, sig,
-  fundamentals, compositeScore, earningsDte
+  fundamentals, compositeScore, earningsDte,
+  isCounterTrend, rangePos
 }) {
   const isCall = !isBull;
   const iv = ivOverride / 100;
@@ -1045,6 +1046,24 @@ function TradeRecommendationTab({
 
   return (
     <div className={styles.tabContent}>
+
+      {/* Counter-trend banner */}
+      {isCounterTrend && (
+        <div className={styles.counterTrendBanner}>
+          <div className={styles.counterTrendBannerTitle}>
+            ↩ Counter-trend setup
+          </div>
+          <div className={styles.counterTrendBannerDesc}>
+            {isBull
+              ? `Bull signal exhausted at ${Math.round(rangePos*100)}% of range — selling calls is the play, not buying. Use the Bear Call Spread below.`
+              : `Bear signal exhausted at ${Math.round(rangePos*100)}% of range — selling puts is the play, not shorting. Use the Bull Put Spread below.`
+            }
+          </div>
+          <div className={styles.counterTrendBannerRules}>
+            ⚠ Half normal size · Hard stop if W signal reverses · Do not hold through earnings
+          </div>
+        </div>
+      )}
 
       {/* Earnings window guidance */}
       {earningsDte <= 14 && earningsDte > 2 && (
@@ -1722,7 +1741,8 @@ function ManageTab({ positions, price, ticker, sig }) {
             <div className={styles.manageMetrics}>
               <Metric label="Status"    val={status.toUpperCase()}
                 cls={status==='danger'?styles.neg:status==='watch'?styles.amber:styles.pos} />
-              <Metric label="Est P&L"   val={`${pnl>=0?'+':'-'}$${Math.round(Math.abs(pnl)).toLocaleString()}`}
+              <Metric label="Est P&L"
+                val={<>{pnl>=0?'+':'-'}${Math.round(Math.abs(pnl)).toLocaleString()}<span className={styles.pnlTheoretical}> est.</span></>}
                 cls={pnl>=0?styles.pos:styles.neg} />
               {be && isShort && <Metric label="B/E" val={`$${be.toLocaleString(undefined,{maximumFractionDigits:0})}`} />}
               <Metric label="DTE"       val={`${dte}d`} />
@@ -1837,6 +1857,164 @@ function LeapTab({ ticker, spot, isBull, sig, fundamentals }) {
   );
 }
 
+// ── Counter-Trend Tab ─────────────────────────────────────────────
+function CounterTrendTab({
+  ticker, spot, isBull, rangePos, sig,
+  compositeScore, ivOverride, account, params, earningsDte
+}) {
+  const iv = (ivOverride ?? 30) / 100;
+
+  // Counter direction is opposite of main signal
+  // Bull exhausted at highs → sell call spread
+  // Bear exhausted at lows → sell put spread
+  const isSellingCalls = isBull; // selling calls against bull exhaustion
+  const optType = isSellingCalls ? 'Call' : 'Put';
+
+  // Suggested strikes
+  // Short strike: 5-8% OTM from current price
+  // Long strike: 10-15% OTM (protection)
+  const shortStrikePct = isSellingCalls ? 1.06 : 0.94;
+  const longStrikePct  = isSellingCalls ? 1.12 : 0.88;
+  const shortStrike = spot
+    ? Math.round(spot * shortStrikePct / 5) * 5 : null;
+  const longStrike  = spot
+    ? Math.round(spot * longStrikePct  / 5) * 5 : null;
+  const spreadWidth = shortStrike && longStrike
+    ? Math.abs(longStrike - shortStrike) : null;
+
+  // Estimated premium (rough Black-Scholes approximation)
+  // Using 30 DTE as standard
+  const dte = 30;
+  const estPrem = spot && iv && shortStrike
+    ? Math.round(spot * iv * Math.sqrt(dte / 365) * 0.15 * 100) / 100
+    : null;
+  const maxGain = estPrem ? Math.round(estPrem * 100) : null;
+  const maxLoss = spreadWidth && estPrem
+    ? Math.round((spreadWidth - estPrem) * 100) : null;
+
+  // Buffer to short strike
+  const buffer = spot && shortStrike
+    ? Math.abs(((shortStrike - spot) / spot) * 100).toFixed(1)
+    : null;
+
+  // Signal context
+  const wSince = sig?.W?.since ?? 0;
+  const rangePosPct = rangePos !== null
+    ? Math.round(rangePos * 100) : null;
+
+  return (
+    <div className={styles.counterTab}>
+      {/* Header warning */}
+      <div className={styles.counterHeader}>
+        <span className={styles.counterIcon}>↩</span>
+        <div>
+          <div className={styles.counterTitle}>
+            Counter-trend {optType} Spread
+          </div>
+          <div className={styles.counterSub}>
+            {isSellingCalls
+              ? 'Bull signal exhausted at highs — sell calls into the resistance'
+              : 'Bear signal exhausted at lows — sell puts into the support'}
+          </div>
+        </div>
+      </div>
+
+      {/* Why this works */}
+      <div className={styles.counterReason}>
+        <div className={styles.counterReasonRow}>
+          <span className={styles.counterReasonIcon}>📍</span>
+          <span>Price at {rangePosPct}% of 52wk range
+            — {isSellingCalls ? 'near highs, limited upside' : 'near lows, limited downside'}
+          </span>
+        </div>
+        <div className={styles.counterReasonRow}>
+          <span className={styles.counterReasonIcon}>⏱</span>
+          <span>W signal {wSince} candles old
+            — trend exhaustion likely, momentum fading
+          </span>
+        </div>
+        <div className={styles.counterReasonRow}>
+          <span className={styles.counterReasonIcon}>⚠</span>
+          <span>This is a counter-trend trade — use smaller size,
+            tighter stops than normal
+          </span>
+        </div>
+        {earningsDte <= 30 && (
+          <div className={styles.counterReasonRow}>
+            <span className={styles.counterReasonIcon}>📅</span>
+            <span style={{color:'var(--amber)'}}>
+              Earnings in {earningsDte}d — consider waiting or
+              use wider spread for protection
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Suggested trade */}
+      {shortStrike && longStrike && (
+        <div className={styles.counterTrade}>
+          <div className={styles.counterTradeTitle}>Suggested Trade</div>
+          <div className={styles.counterTradeRow}>
+            <span className={styles.counterTradeLabel}>Structure</span>
+            <span className={styles.counterTradeVal}>
+              {isSellingCalls ? 'Bear' : 'Bull'} {optType} Spread
+            </span>
+          </div>
+          <div className={styles.counterTradeRow}>
+            <span className={styles.counterTradeLabel}>Sell</span>
+            <span className={styles.counterTradeVal}>
+              ${shortStrike} {optType} · {buffer}% OTM
+            </span>
+          </div>
+          <div className={styles.counterTradeRow}>
+            <span className={styles.counterTradeLabel}>Buy</span>
+            <span className={styles.counterTradeVal}>
+              ${longStrike} {optType} · protection
+            </span>
+          </div>
+          <div className={styles.counterTradeRow}>
+            <span className={styles.counterTradeLabel}>Width</span>
+            <span className={styles.counterTradeVal}>
+              ${spreadWidth} spread
+            </span>
+          </div>
+          {estPrem && (
+            <div className={styles.counterTradeRow}>
+              <span className={styles.counterTradeLabel}>Est. Premium</span>
+              <span className={`${styles.counterTradeVal} ${styles.pos}`}>
+                ~${estPrem} · max gain ${maxGain}
+              </span>
+            </div>
+          )}
+          {maxLoss && (
+            <div className={styles.counterTradeRow}>
+              <span className={styles.counterTradeLabel}>Max Loss</span>
+              <span className={`${styles.counterTradeVal} ${styles.neg}`}>
+                ${maxLoss} (defined risk)
+              </span>
+            </div>
+          )}
+          <div className={styles.counterTradeRow}>
+            <span className={styles.counterTradeLabel}>Exit rule</span>
+            <span className={styles.counterTradeVal}>
+              Close at 50% profit · Stop if price breaks {isSellingCalls
+                ? `above $${shortStrike}`
+                : `below $${shortStrike}`} on daily close
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Risk warning */}
+      <div className={styles.counterWarning}>
+        ⚠ Counter-trend trades fail if the trend resumes.
+        Use half normal size. Do not hold through earnings.
+        Exit immediately if {isSellingCalls ? 'W turns bullish again' : 'W turns bearish again'}.
+      </div>
+    </div>
+  );
+}
+
 // ── Main export ───────────────────────────────────────────────────
 export function ResearchCard({
   ticker, spot: spotProp, sig, onClose,
@@ -1904,7 +2082,19 @@ export function ResearchCard({
     && !isProbe
     && (scoreTier === 'PRIME'
       || scoreTier === 'GOOD'
-      || scoreTier === 'MARGINAL');
+      || scoreTier === 'MARGINAL'
+      || isCounterTrend);
+
+  // Counter-trend: BLOCK at range extreme = opposite direction trade valid
+  const rangePos = compositeScore?.rangePos ?? null;
+  const isCounterTrend = scoreTier === 'BLOCK'
+    && earningsDte > 2
+    && rangePos !== null
+    && (
+      (isBull  && rangePos > 0.80)  // bull exhausted at highs → sell calls
+      || (!isBull && rangePos < 0.20) // bear exhausted at lows → sell puts
+    );
+  const counterTrendDir = isBull ? 'bear' : 'bull';
 
   const defaultTab = initialTab ?? 'why';
   const [activeTab, setActiveTab] = useState(defaultTab);
@@ -2056,6 +2246,8 @@ export function ResearchCard({
               fundamentals={fundamentals}
               compositeScore={compositeScore}
               earningsDte={earningsDte}
+              isCounterTrend={isCounterTrend}
+              rangePos={rangePos}
             />
           )}
           {activeTab==='probe' && (

@@ -956,6 +956,105 @@
   font-size: 11px; color: var(--text3); line-height: 1.5;
 }
 
+.counterTrendBanner {
+  padding: 12px 14px;
+  background: rgba(239,68,68,.06);
+  border: 1px solid rgba(239,68,68,.2);
+  border-radius: var(--radius);
+  margin-bottom: 4px;
+}
+.counterTrendBannerTitle {
+  font-family: var(--mono); font-size: 12px;
+  font-weight: 700; color: var(--red);
+  margin-bottom: 5px;
+}
+.counterTrendBannerDesc {
+  font-size: 12px; color: var(--text2);
+  line-height: 1.5; margin-bottom: 6px;
+}
+.counterTrendBannerRules {
+  font-family: var(--mono); font-size: 10px;
+  color: var(--amber); font-weight: 700;
+}
+.pnlTheoretical {
+  font-size: 9px; color: var(--text3);
+  font-weight: 400; font-family: var(--sans);
+  margin-left: 2px;
+}
+
+.counterTab {
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 4px 0;
+}
+.counterHeader {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 14px;
+  background: rgba(239,68,68,.06);
+  border: 1px solid rgba(239,68,68,.2);
+  border-radius: var(--radius);
+}
+.counterIcon {
+  font-size: 20px; margin-top: 2px;
+}
+.counterTitle {
+  font-family: var(--mono); font-size: 13px;
+  font-weight: 700; color: var(--red);
+  margin-bottom: 3px;
+}
+.counterSub {
+  font-size: 12px; color: var(--text2); line-height: 1.4;
+}
+.counterReason {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 10px 14px;
+  background: var(--bg2);
+  border-radius: var(--radius);
+}
+.counterReasonRow {
+  display: flex; align-items: flex-start; gap: 8px;
+  font-size: 12px; color: var(--text2); line-height: 1.4;
+}
+.counterReasonIcon { font-size: 13px; min-width: 18px; }
+.counterTrade {
+  display: flex; flex-direction: column; gap: 0;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.counterTradeTitle {
+  font-family: var(--mono); font-size: 11px;
+  font-weight: 700; color: var(--text3);
+  text-transform: uppercase; letter-spacing: .06em;
+  padding: 8px 14px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border2);
+}
+.counterTradeRow {
+  display: flex; align-items: center;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--border2);
+  gap: 12px;
+}
+.counterTradeRow:last-child { border-bottom: none; }
+.counterTradeLabel {
+  font-family: var(--mono); font-size: 10px;
+  font-weight: 700; color: var(--text3);
+  text-transform: uppercase; letter-spacing: .06em;
+  min-width: 90px;
+}
+.counterTradeVal {
+  font-family: var(--mono); font-size: 12px;
+  font-weight: 700; color: var(--text);
+}
+.counterWarning {
+  font-size: 11px; color: var(--amber);
+  padding: 8px 12px;
+  background: rgba(245,158,11,.06);
+  border: 1px solid rgba(245,158,11,.2);
+  border-radius: var(--radius-sm);
+  line-height: 1.5;
+}
+
 .harvestSuggested {
   display: flex; align-items: center; gap: 8px;
   flex-wrap: wrap;

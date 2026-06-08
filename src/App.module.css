@@ -147,22 +147,24 @@
 
 .rulesBtn {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
-  padding: 7px 14px;
-  background: rgba(99,102,241,.1);
-  border: 1.5px solid rgba(99,102,241,.3);
+  padding: 5px 12px;
+  background: transparent;
+  border: 1.5px solid var(--border);
   border-radius: var(--radius-sm);
-  color: var(--accent2);
+  color: var(--text3);
   cursor: pointer;
   transition: all .15s;
-  margin-right: 8px;
+  margin-right: 4px;
+  opacity: 0.7;
 }
 
 .rulesBtn:hover {
-  background: rgba(99,102,241,.2);
-  border-color: var(--accent);
-  color: var(--accent2);
+  background: var(--bg3);
+  border-color: var(--text3);
+  color: var(--text2);
+  opacity: 1;
 }
 
 /* ── Footer ──────────────────────────────────────────────────────── */
