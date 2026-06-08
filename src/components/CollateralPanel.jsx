@@ -88,7 +88,7 @@ export function CollateralPanel({ groups, prices, balances, plat, onOpenResearch
         <div className={styles.body}>
           {tickers.map(({ t, c, pctOfAccount, pctOfColl, status }) => (
             <div key={t} className={styles.row}
-              onClick={() => onOpenResearch && signals?.[t] && onOpenResearch(t, signals[t], [])}
+              onClick={() => onOpenResearch && signals?.[t] && onOpenResearch(t, signals[t], [], null, 'manage')}
               style={{ cursor: onOpenResearch ? 'pointer' : 'default' }}
             >
               <span className={styles.ticker}>{t}</span>

@@ -1762,7 +1762,8 @@ function LeapTab({ ticker, spot, isBull, sig, fundamentals }) {
 // ── Main export ───────────────────────────────────────────────────
 export function ResearchCard({
   ticker, spot: spotProp, sig, onClose,
-  activePositions, balances, allSignals
+  activePositions, balances, allSignals,
+  initialTab
 }) {
   const params  = loadParams();
   const account = (balances?.rh??0) + (balances?.fid??0);
@@ -1827,7 +1828,7 @@ export function ResearchCard({
       || scoreTier === 'GOOD'
       || scoreTier === 'MARGINAL');
 
-  const defaultTab = 'why';
+  const defaultTab = initialTab ?? 'why';
   const [activeTab, setActiveTab] = useState(defaultTab);
 
   const tabs = [

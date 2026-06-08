@@ -337,12 +337,13 @@ export default function App() {
             balances={balances}
             plat={plat}
             signals={signals}
-            onOpenResearch={(ticker, sig, positions) => {
+            onOpenResearch={(ticker, sig, positions, fallbackSpot, initialTab) => {
               setResearchTarget({
                 ticker,
                 sig,
                 activePositions: positions ?? groups.find(g => g.t === ticker)?.pos ?? [],
-                fallbackSpot: prices?.[ticker] ?? null,
+                fallbackSpot: fallbackSpot ?? prices?.[ticker] ?? null,
+                initialTab: initialTab ?? 'why',
               });
             }}
           />
@@ -407,6 +408,7 @@ export default function App() {
           activePositions={researchTarget.activePositions}
           balances={balances}
           allSignals={signals}
+          initialTab={researchTarget.initialTab}
           onClose={() => setResearchTarget(null)}
         />
       )}
