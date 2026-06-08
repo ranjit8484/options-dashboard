@@ -996,7 +996,11 @@ function TradeRecommendationTab({
   fundamentals, compositeScore, earningsDte,
   isCounterTrend, rangePos
 }) {
-  const isCall = !isBull;
+  // Counter-trend flips the direction
+  // Bull exhausted → sell calls (bear direction)
+  // Bear exhausted → sell puts (bull direction)
+  const effectiveBull = isCounterTrend ? !isBull : isBull;
+  const isCall = !effectiveBull;
   const iv = ivOverride / 100;
 
   // Best expiry — prefer 14-21 DTE
@@ -1646,6 +1650,11 @@ function ManageTab({ positions, price, ticker, sig }) {
         const { status, be, diff } = calcStatus(p.dir, p.k, p.prem, price);
         const pnl = estPnl(ticker, p.dir, p.k, p.dte??0, p.prem, p.qty, price,
           p.isSpread, p.longK, p.spreadWidth);
+        // Flag recently opened positions where BS may be inaccurate
+        // Real market spread is wider than BS theoretical value
+        const recentlyOpened = (p.dte ?? 0) > 20
+          && p.isSpread
+          && pnl > 0;
         const isShort = p.dir==='sc'||p.dir==='sp';
         const dte = p.dte ?? 0;
         const itmOtm = diff>0?'ITM':'OTM';
@@ -1744,6 +1753,12 @@ function ManageTab({ positions, price, ticker, sig }) {
               <Metric label="Est P&L"
                 val={<>{pnl>=0?'+':'-'}${Math.round(Math.abs(pnl)).toLocaleString()}<span className={styles.pnlTheoretical}> est.</span></>}
                 cls={pnl>=0?styles.pos:styles.neg} />
+              {recentlyOpened && (
+                <div className={styles.pnlWarning}>
+                  ⚠ BS model may overstate profit on wide-spread stocks.
+                  Check broker for real mark.
+                </div>
+              )}
               {be && isShort && <Metric label="B/E" val={`$${be.toLocaleString(undefined,{maximumFractionDigits:0})}`} />}
               <Metric label="DTE"       val={`${dte}d`} />
             </div>
@@ -2078,23 +2093,23 @@ export function ResearchCard({
   const isProbe = (scoreTier === 'BLOCK' || scoreTier === 'AVOID')
     && earningsDte > 2
     && (phase?.phase === 1 || phase?.probeAllowed === true);
-  const tradeAllowed = !isHardBlock
-    && !isProbe
-    && (scoreTier === 'PRIME'
-      || scoreTier === 'GOOD'
-      || scoreTier === 'MARGINAL'
-      || isCounterTrend);
-
   // Counter-trend: BLOCK at range extreme = opposite direction trade valid
   const rangePos = compositeScore?.rangePos ?? null;
   const isCounterTrend = scoreTier === 'BLOCK'
     && earningsDte > 2
     && rangePos !== null
     && (
-      (isBull  && rangePos > 0.80)  // bull exhausted at highs → sell calls
-      || (!isBull && rangePos < 0.20) // bear exhausted at lows → sell puts
+      (isBull  && rangePos > 0.80)
+      || (!isBull && rangePos < 0.20)
     );
   const counterTrendDir = isBull ? 'bear' : 'bull';
+
+  const tradeAllowed = !isHardBlock
+    && !isProbe
+    && (scoreTier === 'PRIME'
+      || scoreTier === 'GOOD'
+      || scoreTier === 'MARGINAL'
+      || isCounterTrend);
 
   const defaultTab = initialTab ?? 'why';
   const [activeTab, setActiveTab] = useState(defaultTab);
