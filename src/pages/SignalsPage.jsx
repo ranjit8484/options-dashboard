@@ -38,9 +38,19 @@ function getReadinessTier(row, fundamentals, spot, ticker, signals) {
   // WEAK       → 2 (WAIT)
   // AVOID/BLOCK → 3 (WEAK)
   // no signal  → 4 (NONE)
+  // Cap conflicted/sideways/low conviction at MARGINAL
+  const thesis = row?.sig?._strategy?.thesis ?? '';
+  const conviction = row?.sig?._strategy?.conviction ?? 'none';
+  const isConflicted = thesis.toLowerCase().includes('conflict')
+    || thesis.toLowerCase().includes('sideways')
+    || conviction === 'low'
+    || conviction === 'none';
+
   switch (cs.tier) {
-    case 'PRIME':    return 0;
-    case 'GOOD':     return 0;
+    case 'PRIME':
+      return isConflicted ? 1 : 0;
+    case 'GOOD':
+      return isConflicted ? 1 : 0;
     case 'MARGINAL': return 1;
     case 'WEAK':     return 2;
     case 'AVOID':    return 3;
@@ -134,7 +144,6 @@ function getRuleViolations(ticker, bucket, sig, activeTickers,
   });
   const bucketCount = bucketCounts[bucket] || 0;
   const conflicts   = getConflicts(ticker, activeTickers);
-  const isRegime4   = p.volatilityRegime === 4;
   const isNaked     = sig?._strategy?.variant === 'naked';
   const isHardAvoid = HARD_AVOID_NAKED.includes(ticker) && isNaked;
   const isBucketF   = bucket === 'F' && isNaked;
@@ -171,8 +180,6 @@ function getRuleViolations(ticker, bucket, sig, activeTickers,
 
   if (conflicts.length > 0)
     conflicts.forEach(c => violations.push({ type:'hard', msg: c }));
-  if (isRegime4 && isNaked)
-    violations.push({ type:'hard', msg:'Regime 4 — no naked premium' });
   if (isHardAvoid)
     violations.push({ type:'hard', msg:'Hard avoid — no naked calls' });
   if (isBucketF)
@@ -210,12 +217,6 @@ function PortfolioBar({ groups, params, prices, balances }) {
           </span>
         </div>
       ))}
-      <div className={styles.pbItem}>
-        <span className={styles.pbLabel}>Regime</span>
-        <span className={`${styles.pbVal} ${p.volatilityRegime === 4 ? styles.pbFull : styles.pbOk}`}>
-          {p.volatilityRegime} {p.volatilityRegime === 4 ? '🚨' : '✅'}
-        </span>
-      </div>
       {totalAccount > 0 && (() => {
         const heaviest = groups.reduce((best, g) => {
           const price = prices?.[g.t] ?? 100;
@@ -403,12 +404,18 @@ function TickerSearch({ onResult, prices }) {
 }
 
 // ── LEAP Harvest Panel ────────────────────────────────
-function LeapHarvestPanel({ groups, prices, closed }) {
+export function LeapHarvestPanel({ groups, prices, closed, signals, onOpenResearch, plat }) {
   const [open, setOpen] = useState(true);
 
   const items = useMemo(() => {
     const list = [];
-    groups.forEach(g => {
+    const filteredGroups = !plat || plat === 'ALL'
+      ? groups
+      : groups.map(g => ({
+          ...g,
+          pos: g.pos.filter(p => (p.plat || '').toUpperCase() === plat)
+        })).filter(g => g.pos.length > 0);
+    filteredGroups.forEach(g => {
       const leaps = g.pos.filter(p =>
         (p.dir === 'lc' || p.dir === 'lp') && (p.dte ?? 0) > 60
       );
@@ -426,26 +433,46 @@ function LeapHarvestPanel({ groups, prices, closed }) {
         let harvested = 0;
         const leapOpenDate = leap.openDate
           ? new Date(leap.openDate) : null;
-        if (closed && leapOpenDate) {
+        const leapCallPut = isCallLeap ? 'CALL' : 'PUT';
+        if (closed) {
           closed.forEach(c => {
-            if ((c.ticker||'').toUpperCase() !== g.t) return;
-            const cd = c.closeDate ? new Date(c.closeDate) : null;
-            if (!cd || cd < leapOpenDate) return;
-            const credit = parseFloat(c.exitCredit || 0);
-            if (credit > 0) harvested += credit * 100;
+            const ct = (c.ticker || '').toString().trim().toUpperCase();
+            if (ct !== g.t.toUpperCase()) return;
+            // Must be opened after the LEAP
+            if (leapOpenDate && c.openDate) {
+              const tradeOpen = new Date(c.openDate);
+              if (tradeOpen < leapOpenDate) return;
+            }
+            // Must be same type as LEAP
+            if (c.callPut && c.callPut !== leapCallPut) return;
+            // Must be hedge/harvest trade type only — not spreads or directional trades
+            const tt = (c.tradeType || '').toLowerCase();
+            const isHedge = tt.includes('hedge') || tt.includes('harvest')
+              || tt.includes('pmcc') || tt.includes('pmcp')
+              || tt.includes('covered');
+            if (!isHedge) return;
+            // Must be a credit trade
+            const credit = parseFloat(c.credit || 0);
+            if (credit <= 0) return;
+            harvested += credit * 100;
           });
         }
 
         const leapCost  = leap.prem * 100 * (leap.qty || 1);
+        const leapCostDollars  = Math.round(leapCost);
+        const harvestedDollars = Math.round(harvested);
         const offsetPct = leapCost > 0
-          ? Math.round(harvested / leapCost * 100) : 0;
+          ? Math.min(100, Math.round(harvested / leapCost * 100)) : 0;
+        const paidOff = harvestedDollars >= leapCostDollars;
 
         if (activeHedge) {
           list.push({
             ticker: g.t,
             leap, activeHedge,
             offsetPct, leapCost, harvested,
-            leapDir, isCallLeap,
+            leapCostDollars, harvestedDollars,
+            leapDir, isCallLeap, paidOff,
+            plat: leap.plat,
             urgency: 'safe',
             action: activeHedge.dte <= 7
               ? `Expires in ${activeHedge.dte}d — prepare next sale`
@@ -456,7 +483,9 @@ function LeapHarvestPanel({ groups, prices, closed }) {
             ticker: g.t,
             leap, activeHedge: null,
             offsetPct, leapCost, harvested,
-            leapDir, isCallLeap,
+            leapCostDollars, harvestedDollars,
+            leapDir, isCallLeap, paidOff,
+            plat: leap.plat,
             urgency: 'warn',
             action: `No harvest open — sell ${leapDir} now`,
           });
@@ -498,11 +527,43 @@ function LeapHarvestPanel({ groups, prices, closed }) {
               className={`${styles.leapHarvestRow}
                 ${item.urgency === 'warn'
                   ? styles.leapHarvestRowWarn
-                  : styles.leapHarvestRowSafe}`}>
+                  : styles.leapHarvestRowSafe}`}
+              style={{ cursor: onOpenResearch ? 'pointer' : 'default' }}
+              onClick={() => onOpenResearch && onOpenResearch(
+                item.ticker,
+                signals?.[item.ticker] ?? null,
+                groups?.find(g => g.t === item.ticker)?.pos ?? []
+              )}>
               <div className={styles.leapHarvestLeft}>
-                <span className={styles.leapHarvestTicker}>
-                  {item.ticker}
-                </span>
+                <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
+                  <span className={styles.leapHarvestTicker}>
+                    {item.ticker}
+                  </span>
+                  {item.plat === 'RH' && (
+                    <span style={{
+                      display:'inline-flex',alignItems:'center',gap:'4px',
+                      padding:'1px 6px',borderRadius:'4px',fontSize:'10px',
+                      fontFamily:'monospace',fontWeight:'700',
+                      background:'rgba(202,255,0,.1)',
+                      border:'1px solid rgba(202,255,0,.2)',color:'#7a9900'
+                    }}>
+                      <svg width="10" height="10" viewBox="0 0 14 14"><rect width="14" height="14" rx="3" fill="#CAFF00"/><path d="M7 12 C7 12 5.5 8 7 5.5 C8.5 3 10 5 9.5 7 C9 9 7 9 7 12Z" fill="#111"/></svg>
+                      RH
+                    </span>
+                  )}
+                  {item.plat === 'FID' && (
+                    <span style={{
+                      display:'inline-flex',alignItems:'center',gap:'4px',
+                      padding:'1px 6px',borderRadius:'4px',fontSize:'10px',
+                      fontFamily:'monospace',fontWeight:'700',
+                      background:'rgba(27,94,32,.1)',
+                      border:'1px solid rgba(139,105,20,.25)',color:'#C8A951'
+                    }}>
+                      <svg width="10" height="10" viewBox="0 0 14 14"><rect width="14" height="14" rx="3" fill="#1B5E20"/><circle cx="7" cy="7" r="5" fill="#2E7D32"/><polygon points="7,3 9.5,11 7,9.5 4.5,11" fill="#C8A951"/></svg>
+                      FID
+                    </span>
+                  )}
+                </div>
                 <span className={styles.leapHarvestLbl}>
                   {item.leap.k} Long {item.leapDir === 'call' ? 'Call' : 'Put'}
                   · {item.leap.exp}
@@ -514,15 +575,21 @@ function LeapHarvestPanel({ groups, prices, closed }) {
                     className={styles.leapHarvestBar}
                     style={{
                       width: `${Math.min(item.offsetPct, 100)}%`,
-                      background: item.offsetPct >= 50
+                      background: item.paidOff
+                        ? '#00C805'
+                        : item.offsetPct >= 50
                         ? 'var(--green)'
                         : item.offsetPct >= 25
-                        ? 'var(--amber)' : 'var(--red)'
+                        ? 'var(--amber)'
+                        : 'var(--red)'
                     }}
                   />
                 </div>
                 <span className={styles.leapHarvestPct}>
-                  {item.offsetPct}% offset
+                  {item.paidOff
+                    ? `✓ PAID OFF · $${item.harvestedDollars.toLocaleString()}`
+                    : `$${item.harvestedDollars.toLocaleString()} / $${item.leapCostDollars.toLocaleString()}`
+                  }
                 </span>
               </div>
               <div className={styles.leapHarvestRight}>
@@ -666,16 +733,6 @@ export function SignalsPage({
         <PortfolioBar groups={groups} params={p} prices={prices} balances={balances} />
       )}
 
-      {/* ── LEAP Harvest ── */}
-      {!isPublic && groups.some(g =>
-        g.pos.some(p => (p.dir === 'lc' || p.dir === 'lp') && (p.dte ?? 0) > 60)
-      ) && (
-        <LeapHarvestPanel
-          groups={groups}
-          prices={prices}
-          closed={closed}
-        />
-      )}
 
       {/* ── Inner tab bar ── */}
       {/* ── All Tickers Table ── */}

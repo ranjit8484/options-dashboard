@@ -18,9 +18,6 @@ export const DEFAULT_PARAMS = {
   riskMedium:  4,
   riskLow:     2,
 
-  // Volatility regime (1-4)
-  volatilityRegime: 1,
-
   // Dynamic rules
   blockNakedMoveEnabled:       true,
   blockNakedMoveThreshold:     15,

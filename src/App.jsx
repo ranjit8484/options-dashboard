@@ -6,6 +6,7 @@ import { SummaryBar } from "./components/SummaryBar";
 import { PlatformFilter, SortBar } from "./components/Toolbar";
 import { TickerCard } from "./components/TickerCard";
 import { ActionItems } from "./components/ActionItems";
+import { LeapHarvestPanel } from "./pages/SignalsPage";
 import { CollateralPanel } from "./components/CollateralPanel";
 import { RulesModal } from "./components/RulesModal";
 import { TabNav } from "./components/TabNav";
@@ -329,6 +330,26 @@ export default function App() {
             balances={balances}
             plat={plat}
           />
+          {!isPublic && groups.some(g =>
+            g.pos.some(p => (p.dir === 'lc' || p.dir === 'lp') && (p.dte ?? 0) > 60)
+          ) && (
+            <LeapHarvestPanel
+              groups={groups}
+              prices={prices}
+              closed={closed}
+              signals={signals}
+              plat={plat}
+              onOpenResearch={(ticker, sig, positions) =>
+                setResearchTarget({
+                  ticker,
+                  sig,
+                  activePositions: positions ?? groups.find(g => g.t === ticker)?.pos ?? [],
+                  fallbackSpot: prices?.[ticker] ?? null,
+                  initialTab: 'manage',
+                })
+              }
+            />
+          )}
 
           {/* ── Collateral ── */}
           <CollateralPanel

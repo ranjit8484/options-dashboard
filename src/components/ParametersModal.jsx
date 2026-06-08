@@ -95,27 +95,6 @@ export function ParametersModal({ onClose, onSave }) {
               onChange={v => set('maxPortfolioPct', v)} min={5} max={100} suffix="%" />
           </Section>
 
-          {/* Volatility Regime */}
-          <Section title="Volatility Regime">
-            <div className={styles.regimeGrid}>
-              {[1,2,3,4].map(r => (
-                <button
-                  key={r}
-                  className={`${styles.regimeBtn} ${params.volatilityRegime === r ? styles.regimeActive : ''} ${r === 4 ? styles.regime4 : ''}`}
-                  onClick={() => set('volatilityRegime', r)}
-                >
-                  <span className={styles.regimeNum}>{r}</span>
-                  <span className={styles.regimeLabel}>{REGIME_LABELS[r]}</span>
-                </button>
-              ))}
-            </div>
-            {params.volatilityRegime === 4 && (
-              <div className={styles.regimeWarn}>
-                🚨 Regime 4 active — all naked premium selling is blocked
-              </div>
-            )}
-          </Section>
-
           {/* Dynamic Rules */}
           <Section title="Dynamic Rules">
             <div className={styles.ruleRow}>
