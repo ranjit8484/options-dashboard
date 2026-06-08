@@ -299,9 +299,11 @@ export default function App() {
           <button className={styles.refreshBtn} onClick={() => refreshPrices(tickers)} disabled={pricesLoading} title="Fetch live prices from Finnhub">
             {pricesLoading ? "⟳" : "↻"} Prices
           </button>
-          <button className={styles.refreshBtn} onClick={reload} title="Reload positions from Google Sheets">
-            ↻ Sheet
-          </button>
+          {!isPublic && (
+            <button className={styles.refreshBtn} onClick={reload} title="Reload positions from Google Sheets">
+              ↻ Sheet
+            </button>
+          )}
         </div>
       </header>
 
