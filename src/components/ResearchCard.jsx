@@ -1548,7 +1548,8 @@ function ManageTab({ positions, price, ticker, sig }) {
       {/* ── Existing position rows (unchanged) ── */}
       {positions.map((p, i) => {
         const { status, be, diff } = calcStatus(p.dir, p.k, p.prem, price);
-        const pnl = estPnl(ticker, p.dir, p.k, p.dte??0, p.prem, p.qty, price);
+        const pnl = estPnl(ticker, p.dir, p.k, p.dte??0, p.prem, p.qty, price,
+          p.isSpread, p.longK, p.spreadWidth);
         const isShort = p.dir==='sc'||p.dir==='sp';
         const dte = p.dte ?? 0;
         const itmOtm = diff>0?'ITM':'OTM';
