@@ -990,6 +990,328 @@ function SpreadTab({ ticker, spot, isBull, conviction, account, params, ivOverri
 }
 
 // ── Manage tab (active positions on this ticker) ──────────────────
+function getEntryTriggers(sig, spot, isBull, compositeScore, isCounterTrend, earningsDte) {
+  if (!sig || !spot) return null;
+
+  const W  = sig.W  ?? {};
+  const D  = sig.D  ?? {};
+  const h4 = sig['4H'] ?? {};
+  const h1 = sig['1H'] ?? {};
+
+  const dir = isBull ? 'bull' : 'bear';
+  const triggers = [];
+  const waiting  = [];
+  const warnings = [];
+
+  // For counter-trend trades the logic is inverted:
+  // We WANT the main signal to be mature/exhausted
+  // We WANT short-term to be weakening
+  // We do NOT want confirmation in the counter direction
+  if (isCounterTrend) {
+    const wSince  = W.since ?? 0;
+    const dSince  = D.since ?? 0;
+    const h4Since = h4.since ?? 0;
+
+    // Gate 1: Main signal must be mature
+    const mature = dSince >= 5 && (wSince >= 10 || !W.xs);
+    triggers.push({
+      gate: 1,
+      label: 'Signal age',
+      msg: mature
+        ? `D signal ${dSince} candles · W ${wSince} candles — trend mature, exhaustion likely ✓`
+        : `D signal only ${dSince} candles — too fresh for counter-trend, wait for maturity`,
+      status: mature ? 'ok' : 'wait'
+    });
+    if (!mature) waiting.push(triggers.pop());
+
+    // Gate 2: Range position confirms exhaustion
+    const rangePos = compositeScore?.rangePos ?? null;
+    const atExtreme = rangePos !== null && (
+      (isBull && rangePos > 0.80) || (!isBull && rangePos < 0.20)
+    );
+    triggers.push({
+      gate: 2,
+      label: 'Range extreme',
+      msg: atExtreme
+        ? `At ${Math.round((rangePos??0)*100)}% of range — confirmed extreme, resistance strong ✓`
+        : 'Not yet at range extreme — wait for price to reach resistance',
+      status: atExtreme ? 'ok' : 'wait'
+    });
+    if (!atExtreme) { waiting.push(triggers.pop()); }
+
+    // Gate 3: Short-term weakening (4H/1H opposing main signal)
+    const h4Opposing = isBull ? (h4.xs ?? 0) <= -1 : (h4.xs ?? 0) >= 1;
+    const h1Opposing = isBull ? (h1.xs ?? 0) <= -1 : (h1.xs ?? 0) >= 1;
+    if (h4Opposing || h1Opposing) {
+      triggers.push({
+        gate: 3,
+        label: 'ST weakness',
+        msg: h4Opposing
+          ? `4H already ${isBull ? 'bearish' : 'bullish'} — momentum shifting, ideal entry ⚡`
+          : `1H showing ${isBull ? 'bearish' : 'bullish'} — early weakness, enter on 4H confirmation`,
+        status: 'ok'
+      });
+    } else {
+      waiting.push({
+        gate: 3,
+        label: 'ST weakness',
+        msg: isBull
+          ? 'Wait for 4H to turn bearish (▽) — confirms exhaustion before selling calls'
+          : 'Wait for 4H to turn bullish (▲) — confirms exhaustion before selling puts',
+        status: 'wait'
+      });
+    }
+
+    // Gate 4: No earnings risk
+    if (earningsDte && earningsDte <= 21) {
+      warnings.push({
+        gate: 4,
+        label: 'Earnings',
+        msg: `Earnings in ${earningsDte}d — binary risk, use wider spread or wait`,
+        status: 'warn'
+      });
+    } else {
+      triggers.push({
+        gate: 4,
+        label: 'Earnings',
+        msg: earningsDte > 21
+          ? `No earnings for ${earningsDte}d — safe to enter ✓`
+          : 'No upcoming earnings — safe to enter ✓',
+        status: 'ok'
+      });
+    }
+
+    const gatesCleared = triggers.length;
+    const gatesWaiting = waiting.length;
+    const hasWarnings  = warnings.length > 0;
+
+    let readiness, readinessCls;
+    if (gatesWaiting === 0 && !hasWarnings) {
+      readiness    = '⚡ ENTER NOW — counter-trend setup confirmed';
+      readinessCls = 'triggerReady';
+    } else if (gatesWaiting <= 1) {
+      readiness    = '◑ ALMOST — 1 gate pending';
+      readinessCls = 'triggerAlmost';
+    } else {
+      readiness    = `⏳ WAIT — ${gatesWaiting} gate${gatesWaiting > 1 ? 's' : ''} pending`;
+      readinessCls = 'triggerWait';
+    }
+
+    return { triggers, waiting, warnings, readiness, readinessCls };
+  }
+
+  // ── Gate 1: Primary trend (D) ──────────────────
+  const dConfirmed = isBull ? (D.xs ?? 0) >= 1 : (D.xs ?? 0) <= -1;
+  const dFresh     = isBull ? D.xs === 1 : D.xs === -1;
+  const dSince     = D.since ?? 0;
+
+  if (!dConfirmed) {
+    waiting.push({
+      gate: 1,
+      label: 'D signal',
+      msg: isBull
+        ? 'Wait for D to turn bullish (▲) — primary trend not confirmed'
+        : 'Wait for D to turn bearish (▽) — primary trend not confirmed',
+      status: 'wait'
+    });
+  } else {
+    triggers.push({
+      gate: 1,
+      label: 'D signal',
+      msg: `D ${isBull ? '▲' : '▽'} confirmed · ${dSince} candles${dFresh ? ' · fresh signal ⚡' : ''}`,
+      status: 'ok'
+    });
+  }
+
+  // ── Gate 2: Weekly context (W) ──────────────────
+  const wBlocks  = isBull ? (W.xs ?? 0) <= -2 : (W.xs ?? 0) >= 2;
+  const wConfirms = isBull ? (W.xs ?? 0) >= 1 : (W.xs ?? 0) <= -1;
+  const wSince   = W.since ?? 0;
+
+  if (wBlocks) {
+    warnings.push({
+      gate: 2,
+      label: 'W blocks',
+      msg: `W strongly ${isBull ? 'bearish' : 'bullish'} — opposes trade direction. Reduce size.`,
+      status: 'warn'
+    });
+  } else if (wConfirms) {
+    triggers.push({
+      gate: 2,
+      label: 'W context',
+      msg: `W ${isBull ? '▲' : '▽'} confirming · ${wSince} candles`,
+      status: 'ok'
+    });
+  } else {
+    triggers.push({
+      gate: 2,
+      label: 'W context',
+      msg: 'W neutral — D leads, spread appropriate',
+      status: 'ok'
+    });
+  }
+
+  // ── Gate 3: Entry timing (4H + 1H) ─────────────
+  const h4Bull = (h4.xs ?? 0) >= 1;
+  const h4Bear = (h4.xs ?? 0) <= -1;
+  const h1Bull = (h1.xs ?? 0) >= 1;
+  const h1Bear = (h1.xs ?? 0) <= -1;
+  const h4Since = h4.since ?? 0;
+  const h1Since = h1.since ?? 0;
+
+  if (isBull) {
+    if (h4Bull && h1Bull) {
+      triggers.push({
+        gate: 3,
+        label: 'Entry timing',
+        msg: `4H ▲ (${h4Since}) + 1H ▲ (${h1Since}) — momentum aligned, enter now`,
+        status: 'ok'
+      });
+    } else if (h4Bull && !h1Bull) {
+      triggers.push({
+        gate: 3,
+        label: 'Entry timing',
+        msg: `4H ▲ confirmed · 1H pulling back — ideal dip entry window ⚡`,
+        status: 'ok'
+      });
+    } else if (!h4Bull && h1Bull) {
+      waiting.push({
+        gate: 3,
+        label: 'Entry timing',
+        msg: '1H ▲ but 4H not confirmed — wait for 4H bull cross before entry',
+        status: 'wait'
+      });
+    } else {
+      waiting.push({
+        gate: 3,
+        label: 'Entry timing',
+        msg: 'Neither 4H nor 1H bullish — wait for 4H to turn ▲',
+        status: 'wait'
+      });
+    }
+  } else {
+    if (h4Bear && h1Bear) {
+      triggers.push({
+        gate: 3,
+        label: 'Entry timing',
+        msg: `4H ▽ (${h4Since}) + 1H ▽ (${h1Since}) — momentum aligned, enter now`,
+        status: 'ok'
+      });
+    } else if (h4Bear && !h1Bear) {
+      triggers.push({
+        gate: 3,
+        label: 'Entry timing',
+        msg: `4H ▽ confirmed · 1H bouncing — ideal sell zone ⚡`,
+        status: 'ok'
+      });
+    } else if (!h4Bear && h1Bear) {
+      waiting.push({
+        gate: 3,
+        label: 'Entry timing',
+        msg: '1H ▽ but 4H not confirmed — wait for 4H bear cross before entry',
+        status: 'wait'
+      });
+    } else {
+      waiting.push({
+        gate: 3,
+        label: 'Entry timing',
+        msg: 'Neither 4H nor 1H bearish — wait for 4H to turn ▽',
+        status: 'wait'
+      });
+    }
+  }
+
+  // ── Gate 4: MACD momentum ──────────────────────
+  const h4MacdBull = (h4.macdHist ?? 0) > 0;
+  const h4MacdBear = (h4.macdHist ?? 0) < 0;
+  const h4MacdCross = h4.macdCross;
+
+  if (isBull) {
+    if (h4MacdBull) {
+      triggers.push({
+        gate: 4,
+        label: 'MACD',
+        msg: h4MacdCross === 'bull'
+          ? '4H MACD fresh bull cross ⚡ — strong entry signal'
+          : '4H MACD positive — momentum supporting',
+        status: 'ok'
+      });
+    } else {
+      waiting.push({
+        gate: 4,
+        label: 'MACD',
+        msg: '4H MACD negative — wait for histogram to turn positive',
+        status: 'wait'
+      });
+    }
+  } else {
+    if (h4MacdBear) {
+      triggers.push({
+        gate: 4,
+        label: 'MACD',
+        msg: h4MacdCross === 'bear'
+          ? '4H MACD fresh bear cross ⚡ — strong entry signal'
+          : '4H MACD negative — momentum supporting',
+        status: 'ok'
+      });
+    } else {
+      waiting.push({
+        gate: 4,
+        label: 'MACD',
+        msg: '4H MACD positive — wait for histogram to turn negative',
+        status: 'wait'
+      });
+    }
+  }
+
+  // ── Gate 5: Price vs Kijun ──────────────────────
+  const kijunDist = D.kijunDist ?? 0;
+  const nearKijun = Math.abs(kijunDist) < 5;
+  const extendedFromKijun = Math.abs(kijunDist) > 15;
+
+  if (extendedFromKijun) {
+    warnings.push({
+      gate: 5,
+      label: 'Kijun',
+      msg: `Price ${kijunDist > 0 ? '+' : ''}${kijunDist.toFixed(1)}% from Kijun — extended, mean reversion risk`,
+      status: 'warn'
+    });
+  } else if (nearKijun) {
+    triggers.push({
+      gate: 5,
+      label: 'Kijun',
+      msg: `Price near Kijun (${kijunDist > 0 ? '+' : ''}${kijunDist.toFixed(1)}%) — ideal entry zone`,
+      status: 'ok'
+    });
+  } else {
+    triggers.push({
+      gate: 5,
+      label: 'Kijun',
+      msg: `${kijunDist > 0 ? '+' : ''}${kijunDist.toFixed(1)}% from Kijun — within normal range`,
+      status: 'ok'
+    });
+  }
+
+  // ── Overall readiness ──────────────────────────
+  const gatesCleared = triggers.length;
+  const gatesWaiting = waiting.length;
+  const hasWarnings  = warnings.length > 0;
+
+  let readiness, readinessCls;
+  if (gatesWaiting === 0 && !hasWarnings) {
+    readiness    = '⚡ ENTER NOW — all gates clear';
+    readinessCls = 'triggerReady';
+  } else if (gatesWaiting <= 1 && gatesCleared >= 3) {
+    readiness    = '◑ ALMOST — 1 gate pending';
+    readinessCls = 'triggerAlmost';
+  } else {
+    readiness    = `⏳ WAIT — ${gatesWaiting} gate${gatesWaiting > 1 ? 's' : ''} pending`;
+    readinessCls = 'triggerWait';
+  }
+
+  return { triggers, waiting, warnings, readiness, readinessCls };
+}
+
 function TradeRecommendationTab({
   ticker, spot, isBull, conviction,
   account, params, ivOverride, sig,
@@ -1068,6 +1390,43 @@ function TradeRecommendationTab({
           </div>
         </div>
       )}
+
+      {/* Entry trigger checklist */}
+      {(() => {
+        const et = getEntryTriggers(sig, spot, effectiveBull, compositeScore, isCounterTrend, earningsDte);
+        if (!et) return null;
+        return (
+          <div className={styles.triggerPanel}>
+            <div className={styles.triggerHeader}>
+              <span className={styles.triggerTitle}>
+                Entry Gates
+              </span>
+              <span className={styles[et.readinessCls]}>
+                {et.readiness}
+              </span>
+            </div>
+            <div className={styles.triggerList}>
+              {[...et.triggers, ...et.warnings, ...et.waiting].map((t, i) => (
+                <div key={i} className={`${styles.triggerRow}
+                  ${t.status === 'ok'   ? styles.triggerOk   : ''}
+                  ${t.status === 'wait' ? styles.triggerWait2 : ''}
+                  ${t.status === 'warn' ? styles.triggerWarn  : ''}`}>
+                  <span className={styles.triggerIcon}>
+                    {t.status === 'ok'   ? '✓' :
+                     t.status === 'wait' ? '○' : '⚠'}
+                  </span>
+                  <span className={styles.triggerLabel}>
+                    {t.label}
+                  </span>
+                  <span className={styles.triggerMsg}>
+                    {t.msg}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Earnings window guidance */}
       {earningsDte <= 14 && earningsDte > 2 && (

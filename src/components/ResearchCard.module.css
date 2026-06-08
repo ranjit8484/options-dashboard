@@ -956,6 +956,70 @@
   font-size: 11px; color: var(--text3); line-height: 1.5;
 }
 
+.triggerPanel {
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+.triggerHeader {
+  display: flex; align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border2);
+}
+.triggerTitle {
+  font-family: var(--mono); font-size: 11px;
+  font-weight: 700; color: var(--text3);
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.triggerReady {
+  font-family: var(--mono); font-size: 11px;
+  font-weight: 700; color: var(--green);
+}
+.triggerAlmost {
+  font-family: var(--mono); font-size: 11px;
+  font-weight: 700; color: var(--amber);
+}
+.triggerWait {
+  font-family: var(--mono); font-size: 11px;
+  font-weight: 700; color: var(--text3);
+}
+.triggerList {
+  display: flex; flex-direction: column;
+}
+.triggerRow {
+  display: flex; align-items: flex-start;
+  gap: 8px; padding: 7px 14px;
+  border-bottom: 1px solid var(--border2);
+  font-size: 12px; line-height: 1.4;
+}
+.triggerRow:last-child { border-bottom: none; }
+.triggerOk   { background: rgba(34,197,94,.04); }
+.triggerWait2 { background: transparent; }
+.triggerWarn { background: rgba(245,158,11,.04); }
+.triggerIcon {
+  font-size: 11px; min-width: 14px;
+  margin-top: 1px;
+  color: var(--text3);
+}
+.triggerOk .triggerIcon   { color: var(--green); }
+.triggerWait2 .triggerIcon { color: var(--text3); }
+.triggerWarn .triggerIcon { color: var(--amber); }
+.triggerLabel {
+  font-family: var(--mono); font-size: 10px;
+  font-weight: 700; color: var(--text3);
+  text-transform: uppercase; min-width: 70px;
+  margin-top: 1px;
+}
+.triggerMsg {
+  font-size: 12px; color: var(--text2);
+  flex: 1;
+}
+.triggerOk .triggerMsg   { color: var(--text); }
+.triggerWarn .triggerMsg { color: var(--amber); }
+
 .counterTrendBanner {
   padding: 12px 14px;
   background: rgba(239,68,68,.06);

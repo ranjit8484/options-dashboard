@@ -3,35 +3,83 @@ import { parseRows } from "../lib/finance";
 
 const FINNHUB_KEY = import.meta.env.VITE_FINNHUB_KEY;
 
+// Shared in-memory cache — survives across components
+// but resets on page reload
+const _priceCache = {};
+const _inFlight   = {};
+const CACHE_TTL   = 5 * 60 * 1000; // 5 minutes
+
 async function fetchLivePrices(tickers) {
   if (!FINNHUB_KEY) {
     console.warn("No Finnhub key set");
     return {};
   }
+
+  const now     = Date.now();
   const results = {};
-  // Fetch sequentially with delay to avoid 429
-  // Finnhub free tier: 60 calls/minute = 1/second
-  // We use 650ms gap to stay safely under limit
+  const toFetch = [];
+
+  // Return cached prices, collect stale ones to fetch
   for (const ticker of tickers) {
-    try {
-      const res = await fetch(
-        `https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${FINNHUB_KEY}`
-      );
-      if (res.status === 429) {
-        // Rate limited — wait 2 seconds and skip
-        await new Promise(r => setTimeout(r, 2000));
-        continue;
-      }
-      const json = await res.json();
-      if (json.c > 0) results[ticker] = json.c;
-    } catch {
-      // silently keep existing price
+    const cached = _priceCache[ticker];
+    if (cached && (now - cached.ts) < CACHE_TTL) {
+      results[ticker] = cached.price;
+    } else {
+      toFetch.push(ticker);
     }
-    // Wait 650ms between each request
-    await new Promise(r => setTimeout(r, 650));
   }
+
+  if (toFetch.length === 0) return results;
+
+  // Deduplicate in-flight requests
+  // If another component is already fetching this ticker, wait for it
+  for (const ticker of toFetch) {
+    if (_inFlight[ticker]) {
+      try {
+        const price = await _inFlight[ticker];
+        if (price) results[ticker] = price;
+      } catch {}
+      continue;
+    }
+
+    // Create a promise for this fetch so others can share it
+    _inFlight[ticker] = (async () => {
+      try {
+        const res = await fetch(
+          `https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${FINNHUB_KEY}`
+        );
+        if (res.status === 429) {
+          console.warn(`Finnhub 429 on ${ticker} — using cached price`);
+          return _priceCache[ticker]?.price ?? null;
+        }
+        const json = await res.json();
+        if (json.c > 0) {
+          _priceCache[ticker] = { price: json.c, ts: Date.now() };
+          return json.c;
+        }
+        return null;
+      } catch {
+        return _priceCache[ticker]?.price ?? null;
+      } finally {
+        delete _inFlight[ticker];
+      }
+    })();
+
+    try {
+      const price = await _inFlight[ticker];
+      if (price) results[ticker] = price;
+    } catch {}
+
+    // 700ms between requests to stay under 60/min limit
+    await new Promise(r => setTimeout(r, 700));
+  }
+
   return results;
 }
+
+// Expose cache for debugging
+export function getPriceCache() { return { ..._priceCache }; }
+export function clearPriceCache() { Object.keys(_priceCache).forEach(k => delete _priceCache[k]); }
 
 const API = "/api/exec";
 

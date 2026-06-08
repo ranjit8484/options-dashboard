@@ -10,7 +10,6 @@ import { calcCollateral, calcComposite, calcEntry, calcStrategy,
 import { getLeapExpiries } from '../lib/strikeCalc';
 import styles from './SignalsPage.module.css';
 
-const FINNHUB_KEY = import.meta.env.VITE_FINNHUB_KEY;
 
 // ── Conviction sort order ─────────────────────────────
 const CONV_ORDER = { full:0, high:1, medium:2, low:3, none:4, exit:5 };
@@ -21,8 +20,6 @@ function getReadinessTier(row, fundamentals, spot, ticker, signals) {
   const { sig } = row;
   if (!sig) return 4;
 
-  // Use composite score for consistent
-  // ranking with ResearchCard
   const cs = calcCompositeScore({
     sig,
     fundamentals: fundamentals ?? null,
@@ -32,41 +29,59 @@ function getReadinessTier(row, fundamentals, spot, ticker, signals) {
 
   if (!cs) return 4;
 
-  // Map composite tier to readiness tier
-  // PRIME/GOOD → 0 (READY)
-  // MARGINAL   → 1 (WATCH)
-  // WEAK       → 2 (WAIT)
-  // AVOID/BLOCK → 3 (WEAK)
-  // no signal  → 4 (NONE)
-  // Cap conflicted/sideways/low conviction at MARGINAL
-  const thesis = row?.sig?._strategy?.thesis ?? '';
-  const conviction = row?.sig?._strategy?.conviction ?? 'none';
+  const thesis = sig?._strategy?.thesis ?? '';
+  const conviction = sig?._strategy?.conviction ?? 'none';
   const isConflicted = thesis.toLowerCase().includes('conflict')
     || thesis.toLowerCase().includes('sideways')
     || thesis.toLowerCase().includes('watch')
     || conviction === 'low'
     || conviction === 'none';
 
-  switch (cs.tier) {
-    case 'PRIME':
-      return isConflicted ? 1 : 0;
-    case 'GOOD':
-      return isConflicted ? 1 : 0;
-    case 'MARGINAL': return 1;
-    case 'WEAK':     return 2;
-    case 'AVOID':    return 3;
-    case 'BLOCK':    return 3;
-    default:         return 4;
+  // Counter-trend: mature BLOCK signal at range extreme
+  const rangePos = cs.rangePos ?? null;
+  const isBull = (sig?._entry?.dir ?? '') === 'long';
+  const wSince = sig?.W?.since ?? 0;
+  const isCounterTrend = cs.tier === 'BLOCK'
+    && rangePos !== null
+    && wSince >= 10
+    && (
+      (isBull  && rangePos > 0.80)
+      || (!isBull && rangePos < 0.20)
+    );
+
+  if (isCounterTrend) return 2;
+
+  // Only PRIME and GOOD are eligible for Trade Now / Watch
+  // MARGINAL stays MARGINAL regardless of gates
+  if (cs.tier !== 'PRIME' && cs.tier !== 'GOOD') {
+    if (cs.tier === 'MARGINAL' && !isConflicted) return 3;
+    return 4;
   }
+
+  // Conflicted PRIME/GOOD → MARGINAL
+  if (isConflicted) return 3;
+
+  // Check entry gates for PRIME/GOOD
+  const h4 = sig?.['4H'] ?? {};
+  const h1 = sig?.['1H'] ?? {};
+  const h4xs   = h4.xs ?? 0;
+  const h1xs   = h1.xs ?? 0;
+  const h4Macd = h4.macdHist ?? 0;
+
+  const gatesReady = isBull
+    ? ((h4xs >= 1 || h1xs >= 1) && h4Macd > 0)
+    : ((h4xs <= -1 || h1xs <= -1) && h4Macd < 0);
+
+  return gatesReady ? 0 : 1;
 }
 
 // Tier labels and styles for display
 const TIER_META = {
-  0: { label: '🟢 READY',    cls: 'tierReady',    short: 'READY'    },
-  1: { label: '⏳ MARGINAL', cls: 'tierMarginal',  short: 'MARGINAL' },
-  2: { label: '◐ WEAK',      cls: 'tierWeak',      short: 'WEAK'     },
-  3: { label: '○ AVOID',     cls: 'tierAvoid',     short: 'AVOID'    },
-  4: { label: '— No trade',  cls: 'tierNone',      short: 'NO TRADE' },
+  0: { label: 'Trade now',          cls: 'tierTradeNow',  short: 'TRADE NOW'  },
+  1: { label: 'Watch',              cls: 'tierWatch',     short: 'WATCH'      },
+  2: { label: 'Counter-trend probe',cls: 'tierCounter',   short: 'COUNTER'    },
+  3: { label: 'Marginal',           cls: 'tierMarginal',  short: 'MARGINAL'   },
+  4: { label: 'No trade',           cls: 'tierNone',      short: 'NO TRADE'   },
 };
 
 // ── Exit badge helper for active short positions ──────
@@ -702,10 +717,10 @@ export function SignalsPage({
     let rows = allRows;
     if (bucketFilter !== 'ALL') rows = rows.filter(r => r.bucket === bucketFilter);
     if (showFilter === 'ACTIVE')   rows = rows.filter(r => r.isActive);
-    if (showFilter === 'READY')    rows = rows.filter(r => r.readinessTier === 0);
-    if (showFilter === 'MARGINAL') rows = rows.filter(r => r.readinessTier === 1);
-    if (showFilter === 'WEAK')     rows = rows.filter(r => r.readinessTier === 2);
-    if (showFilter === 'NOTRADE')  rows = rows.filter(r => r.readinessTier >= 3);
+    if (showFilter === 'TRADENOW') rows = rows.filter(r => r.readinessTier === 0);
+    if (showFilter === 'WATCH')    rows = rows.filter(r => r.readinessTier === 1);
+    if (showFilter === 'COUNTER')  rows = rows.filter(r => r.readinessTier === 2);
+    if (showFilter === 'MARGINAL') rows = rows.filter(r => r.readinessTier === 3);
     return [...rows].sort((a,b) => {
       if (sortBy === 'readiness') {
         const tierDiff = (a.readinessTier ?? 4) - (b.readinessTier ?? 4);
@@ -764,10 +779,10 @@ export function SignalsPage({
             {[
               { id:'ALL',      label:'All' },
               { id:'ACTIVE',   label:'● Active' },
-              { id:'READY',    label:'🟢 Ready' },
-              { id:'MARGINAL', label:'⏳ Marginal' },
-              { id:'WEAK',     label:'◐ Weak' },
-              { id:'NOTRADE',  label:'— No trade' },
+              { id:'TRADENOW', label:'⚡ Trade now' },
+              { id:'WATCH',    label:'⏳ Watch' },
+              { id:'COUNTER',  label:'↩ Counter' },
+              { id:'MARGINAL', label:'Marginal' },
             ].map(f => (
               <button key={f.id}
                 className={`${styles.filterPill} ${showFilter === f.id ? styles.filterActive : ''}`}
@@ -780,9 +795,7 @@ export function SignalsPage({
               value={sortBy}
               onChange={e => setSortBy(e.target.value)}
             >
-              <option value="readiness">Sort: 🟢 Readiness</option>
-              <option value="conviction">Sort: Signal</option>
-              <option value="ticker">Sort: Ticker</option>
+              <option value="readiness">Sort: Score</option>
               <option value="bucket">Sort: Bucket</option>
             </select>
           </div>
@@ -797,6 +810,7 @@ export function SignalsPage({
                 <th>Score</th>
                 <th>Thesis</th>
                 <th>Trade</th>
+                <th>Gates</th>
                 <th>W</th>
                 <th>D</th>
                 <th>4H</th>
@@ -815,9 +829,21 @@ export function SignalsPage({
                     {showDivider && tierMeta && (
                       <tr>
                         <td colSpan={99}
-                          className={`${styles.tierDivider} ${styles[tierMeta.cls + 'Div'] ?? ''}`}>
+                          className={`${styles.tierDivider}
+                            ${styles[tierMeta.cls + 'Div'] ?? ''}
+                            ${r.readinessTier === 2 ? styles.tierCounterDiv : ''}
+                          `}>
                           <span className={styles.tierDividerLabel}>
+                            {r.readinessTier === 0 && '⚡ '}
+                            {r.readinessTier === 1 && '⏳ '}
+                            {r.readinessTier === 2 && '↩ '}
+                            {r.readinessTier === 3 && ''}
                             {tierMeta.label}
+                            {r.readinessTier === 2 && (
+                              <span className={styles.tierCounterNote}>
+                                · half size · opposite direction
+                              </span>
+                            )}
                           </span>
                         </td>
                       </tr>
@@ -904,10 +930,11 @@ function TableRow({
   const fallbackSpot = prices?.[ticker]
     ?? activePos[0]?.k ?? null;
 
-  const tierRowCls = readinessTier === 0 ? styles.rowReady
-    : readinessTier === 1 ? styles.rowMarginal
-    : readinessTier >= 3 ? styles.rowNoTrade
-    : '';
+  const tierRowCls = readinessTier === 0 ? styles.rowTradeNow
+    : readinessTier === 1 ? styles.rowWatch
+    : readinessTier === 2 ? styles.rowCounter
+    : readinessTier === 3 ? styles.rowMarginal
+    : styles.rowNoTrade;
   const rowCls = [
     styles.tableRow,
     isActive ? styles.rowActive : '',
@@ -926,7 +953,8 @@ function TableRow({
           <span className={`${styles.scoreChip} ${
             readinessTier === 0 ? styles.scoreChipGreen
             : readinessTier === 1 ? styles.scoreChipAmber
-            : readinessTier >= 3 ? styles.scoreChipRed
+            : readinessTier === 2 ? styles.scoreChipPurple
+            : readinessTier === 3 ? styles.scoreChipOrange
             : styles.scoreChipGrey
           }`}>
             {score}
@@ -975,6 +1003,20 @@ function TableRow({
           <div className={styles.sigDesc}>
             {sig._strategy.description}
           </div>
+        )}
+      </td>
+      <td>
+        {readinessTier === 0 && (
+          <span className={styles.gateNow}>⚡ Enter</span>
+        )}
+        {readinessTier === 1 && (
+          <span className={styles.gateWait}>⏳ Watch</span>
+        )}
+        {readinessTier === 2 && (
+          <span className={styles.gateCounter}>↩ Probe</span>
+        )}
+        {(readinessTier === 3 || readinessTier === 4) && (
+          <span className={styles.gateNa}>—</span>
         )}
       </td>
       <td><TfChip tf="W"  sig={sig?.W}  /></td>

@@ -748,3 +748,74 @@
   min-width: 20px;
   text-align: center;
 }
+
+.tierTradeNowDiv {
+  border-left: 3px solid #22c55e;
+  background: rgba(34,197,94,.04);
+}
+.tierWatchDiv {
+  border-left: 3px solid #f59e0b;
+  background: rgba(245,158,11,.04);
+}
+.tierCounterDiv {
+  border-left: 3px solid #a855f7;
+  background: rgba(168,85,247,.04);
+}
+.tierMarginalDiv {
+  border-left: 3px solid #f97316;
+  background: rgba(249,115,22,.03);
+  opacity: 0.8;
+}
+.tierNoneDiv {
+  border-left: 3px solid #6b7280;
+  background: transparent;
+  opacity: 0.6;
+}
+.tierCounterNote {
+  font-size: 10px;
+  color: #a855f7;
+  font-weight: 400;
+  margin-left: 6px;
+  opacity: 0.8;
+}
+.gateNow {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: #22c55e;
+  white-space: nowrap;
+}
+.gateWait {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: #f59e0b;
+  white-space: nowrap;
+}
+.gateCounter {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: #a855f7;
+  white-space: nowrap;
+}
+.gateNa {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text3);
+}
+
+.rowTradeNow { border-left: 2px solid #22c55e; }
+.rowWatch    { border-left: 2px solid #f59e0b; }
+.rowCounter  { border-left: 2px solid #a855f7; }
+.rowMarginal { border-left: 2px solid #f97316; opacity: 0.85; }
+.rowNoTrade  { opacity: 0.5; }
+
+.scoreChipPurple {
+  background: rgba(168,85,247,.15);
+  color: #7e22ce;
+}
+.scoreChipOrange {
+  background: rgba(249,115,22,.12);
+  color: #c2410c;
+}
