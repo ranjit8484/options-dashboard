@@ -22,7 +22,8 @@ export default function App() {
   const urlParams = new URLSearchParams(window.location.search);
   const isPublic  = urlParams.get('view') === 'g2view';
   const isPrivate = urlParams.get('admin') === 'star';
-  const isLocked  = !isPublic && !isPrivate;
+  const isLocalhost = window.location.hostname === 'localhost';
+  const isLocked  = !isPublic && !isPrivate && !isLocalhost;
 
   const posData = usePositions();
   const {
@@ -324,7 +325,6 @@ export default function App() {
             groups={groups}
             prices={prices}
             balances={balances}
-            closed={closed}
             plat={plat}
           />
 
@@ -375,6 +375,7 @@ export default function App() {
           params={params}
           plat={plat}
           isPublic={isPublic}
+          closed={closed}
         />
       )}
 

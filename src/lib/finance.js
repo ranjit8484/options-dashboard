@@ -99,10 +99,28 @@ export function groupStatus(positions, price) {
 }
 
 // ─── Collateral ───────────────────────────────────────────────────
-export function calcCollateral(dir, strike, prem, qty, price) {
+export function calcCollateral(dir, strike, prem, qty, price, spreadWidth, coveredByLeap, leapCost, diagonalWidth) {
+  // Long options: cost basis is the collateral
   if (dir === "lc" || dir === "lp") return prem * 100 * qty;
-  const otm = dir === "sc" ? Math.max(0, strike - price) : Math.max(0, price - strike);
-  return Math.max((0.20 * price - otm + prem) * 100 * qty, 0.10 * strike * 100 * qty);
+
+  // Diagonal (PMCC/PMCP): short is covered by LEAP
+  // Collateral = LEAP cost already paid (no extra margin)
+  // Because the LEAP IS the collateral
+  if (coveredByLeap && leapCost) return 0;
+
+  // Same-expiry spread: max loss = width minus premium
+  if (spreadWidth && spreadWidth > 0) {
+    return Math.max(0, (spreadWidth - prem) * 100 * qty);
+  }
+
+  // Naked: standard margin formula
+  const otm = dir === "sc"
+    ? Math.max(0, strike - price)
+    : Math.max(0, price - strike);
+  return Math.max(
+    (0.20 * price - otm + prem) * 100 * qty,
+    0.10 * strike * 100 * qty
+  );
 }
 
 // ─── Row parser ───────────────────────────────────────────────────
@@ -194,6 +212,48 @@ export function parseRows(rows) {
         note: dte <= 2 ? "Expires soon" : null,
       });
     }
+  });
+
+  // ── Detect diagonal pairs (PMCC/PMCP) ──────────────
+  // A diagonal is: long option + short option
+  // same ticker, same type (both calls or both puts)
+  // long expiry > short expiry
+  // long strike further ITM than short strike
+  // The short is COVERED by the long — not naked
+  Object.values(groups).forEach(g => {
+    const longs  = g.pos.filter(p => p.dir === 'lc' || p.dir === 'lp');
+    const shorts = g.pos.filter(p => p.dir === 'sc' || p.dir === 'sp');
+
+    longs.forEach(long => {
+      const isLongCall = long.dir === 'lc';
+      // Find matching short: same type, shorter expiry, covered strike
+      const match = shorts.find(short => {
+        if (short.isDiagonal) return false; // already matched
+        const isShortCall = short.dir === 'sc';
+        if (isLongCall !== isShortCall) return false; // must match type
+        // Long must expire after short
+        const longDte  = long.dte  ?? 999;
+        const shortDte = short.dte ?? 0;
+        if (longDte <= shortDte) return false;
+        // For calls: long strike <= short strike (long covers short)
+        // For puts:  long strike <= short strike (long is below short)
+        if (isLongCall && long.k > short.k) return false;
+        if (!isLongCall && long.k > short.k) return false;
+        return true;
+      });
+
+      if (match) {
+        long.isDiagonal  = true;
+        long.diagonalPair = match.id;
+        match.isDiagonal  = true;
+        match.diagonalPair = long.id;
+        match.coveredByLeap = true;
+        match.leapCost = long.prem * 100 * (long.qty || 1);
+        match.leapStrike = long.k;
+        // Spread width for diagonal = short strike - long strike
+        match.diagonalWidth = Math.abs(match.k - long.k);
+      }
+    });
   });
 
   return Object.values(groups);

@@ -26,7 +26,7 @@ export function CollateralPanel({ groups, prices, balances, plat }) {
     filteredGroups.forEach(g => {
       const price = prices[g.t] ?? 100;
       const tc = g.pos.reduce(
-        (s, p) => s + calcCollateral(p.dir, p.k, p.prem, p.qty, price), 0
+        (s, p) => s + calcCollateral(p.dir, p.k, p.prem, p.qty, price, p.spreadWidth, p.coveredByLeap, p.leapCost, p.diagonalWidth), 0
       );
       map[g.t] = tc;
       grand += tc;

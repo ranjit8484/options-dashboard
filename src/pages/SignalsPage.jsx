@@ -220,7 +220,7 @@ function PortfolioBar({ groups, params, prices, balances }) {
         const heaviest = groups.reduce((best, g) => {
           const price = prices?.[g.t] ?? 100;
           const coll  = g.pos.reduce(
-            (s, pos) => s + calcCollateral(pos.dir, pos.k, pos.prem, pos.qty, price), 0
+            (s, pos) => s + calcCollateral(pos.dir, pos.k, pos.prem, pos.qty, price, pos.spreadWidth, pos.coveredByLeap, pos.leapCost, pos.diagonalWidth), 0
           );
           const pct = Math.round(coll / totalAccount * 100);
           return pct > best.pct ? { t: g.t, pct } : best;
@@ -402,11 +402,150 @@ function TickerSearch({ onResult, prices }) {
   );
 }
 
+// ── LEAP Harvest Panel ────────────────────────────────
+function LeapHarvestPanel({ groups, prices, closed }) {
+  const [open, setOpen] = useState(true);
+
+  const items = useMemo(() => {
+    const list = [];
+    groups.forEach(g => {
+      const leaps = g.pos.filter(p =>
+        (p.dir === 'lc' || p.dir === 'lp') && (p.dte ?? 0) > 60
+      );
+      if (!leaps.length) return;
+
+      const allShorts = g.pos.filter(p =>
+        (p.dir === 'sc' || p.dir === 'sp') && (p.dte ?? 0) > 0
+      );
+
+      leaps.forEach((leap, idx) => {
+        const activeHedge = allShorts[idx] ?? null;
+        const leapDir = leap.dir === 'lc' ? 'call' : 'put';
+        const isCallLeap = leap.dir === 'lc';
+
+        let harvested = 0;
+        const leapOpenDate = leap.openDate
+          ? new Date(leap.openDate) : null;
+        if (closed && leapOpenDate) {
+          closed.forEach(c => {
+            if ((c.ticker||'').toUpperCase() !== g.t) return;
+            const cd = c.closeDate ? new Date(c.closeDate) : null;
+            if (!cd || cd < leapOpenDate) return;
+            const credit = parseFloat(c.exitCredit || 0);
+            if (credit > 0) harvested += credit * 100;
+          });
+        }
+
+        const leapCost  = leap.prem * 100 * (leap.qty || 1);
+        const offsetPct = leapCost > 0
+          ? Math.round(harvested / leapCost * 100) : 0;
+
+        if (activeHedge) {
+          list.push({
+            ticker: g.t,
+            leap, activeHedge,
+            offsetPct, leapCost, harvested,
+            leapDir, isCallLeap,
+            urgency: 'safe',
+            action: activeHedge.dte <= 7
+              ? `Expires in ${activeHedge.dte}d — prepare next sale`
+              : `Active · ${activeHedge.dte}d left`,
+          });
+        } else {
+          list.push({
+            ticker: g.t,
+            leap, activeHedge: null,
+            offsetPct, leapCost, harvested,
+            leapDir, isCallLeap,
+            urgency: 'warn',
+            action: `No harvest open — sell ${leapDir} now`,
+          });
+        }
+      });
+    });
+    return list.sort((a,b) =>
+      a.urgency === 'warn' ? -1 : 1
+    );
+  }, [groups, prices, closed]);
+
+  const warnCount = items.filter(i => i.urgency === 'warn').length;
+
+  return (
+    <div className={styles.leapHarvestPanel}>
+      <button
+        className={styles.leapHarvestHeader}
+        onClick={() => setOpen(o => !o)}>
+        <span>💰 LEAP Harvest</span>
+        {warnCount > 0 && (
+          <span className={styles.leapHarvestWarn}>
+            {warnCount} need attention
+          </span>
+        )}
+        {warnCount === 0 && (
+          <span className={styles.leapHarvestGood}>
+            all hedged ✓
+          </span>
+        )}
+        <span style={{marginLeft:'auto',fontSize:'11px',
+          color:'var(--text3)'}}>
+          {open ? '▾' : '▸'}
+        </span>
+      </button>
+      {open && (
+        <div className={styles.leapHarvestBody}>
+          {items.map((item, i) => (
+            <div key={i}
+              className={`${styles.leapHarvestRow}
+                ${item.urgency === 'warn'
+                  ? styles.leapHarvestRowWarn
+                  : styles.leapHarvestRowSafe}`}>
+              <div className={styles.leapHarvestLeft}>
+                <span className={styles.leapHarvestTicker}>
+                  {item.ticker}
+                </span>
+                <span className={styles.leapHarvestLbl}>
+                  {item.leap.k} Long {item.leapDir === 'call' ? 'Call' : 'Put'}
+                  · {item.leap.exp}
+                </span>
+              </div>
+              <div className={styles.leapHarvestMid}>
+                <div className={styles.leapHarvestProgress}>
+                  <div
+                    className={styles.leapHarvestBar}
+                    style={{
+                      width: `${Math.min(item.offsetPct, 100)}%`,
+                      background: item.offsetPct >= 50
+                        ? 'var(--green)'
+                        : item.offsetPct >= 25
+                        ? 'var(--amber)' : 'var(--red)'
+                    }}
+                  />
+                </div>
+                <span className={styles.leapHarvestPct}>
+                  {item.offsetPct}% offset
+                </span>
+              </div>
+              <div className={styles.leapHarvestRight}>
+                <span className={`${styles.leapHarvestAction}
+                  ${item.urgency === 'warn'
+                    ? styles.leapHarvestActionWarn
+                    : styles.leapHarvestActionSafe}`}>
+                  {item.action}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main export ───────────────────────────────────────
 export function SignalsPage({
   groups, watchlist, signals, signalsLoading,
   progress, onRefresh, balances, prices, params,
-  isPublic
+  isPublic, closed
 }) {
   const [researchTarget, setResearchTarget] = useState(null);
   const [searchResult,   setSearchResult]   = useState(null);
@@ -525,6 +664,17 @@ export function SignalsPage({
       {/* ── Portfolio Status ── */}
       {!isPublic && (
         <PortfolioBar groups={groups} params={p} prices={prices} balances={balances} />
+      )}
+
+      {/* ── LEAP Harvest ── */}
+      {!isPublic && groups.some(g =>
+        g.pos.some(p => (p.dir === 'lc' || p.dir === 'lp') && (p.dte ?? 0) > 60)
+      ) && (
+        <LeapHarvestPanel
+          groups={groups}
+          prices={prices}
+          closed={closed}
+        />
       )}
 
       {/* ── Inner tab bar ── */}
