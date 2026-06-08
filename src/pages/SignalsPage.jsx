@@ -43,6 +43,7 @@ function getReadinessTier(row, fundamentals, spot, ticker, signals) {
   const conviction = row?.sig?._strategy?.conviction ?? 'none';
   const isConflicted = thesis.toLowerCase().includes('conflict')
     || thesis.toLowerCase().includes('sideways')
+    || thesis.toLowerCase().includes('watch')
     || conviction === 'low'
     || conviction === 'none';
 
@@ -103,7 +104,7 @@ function TfChip({ sig, tf }) {
     0: styles.chipNone,
    '-1': styles.chipBear1, '-2': styles.chipBear2
   };
-  const since = sig?.since && sig.since > 1
+  const since = sig?.since && sig.since > 0
     ? ` (${sig.since >= 100 ? '99+' : sig.since})`
     : '';
   const colorCls = sig ? (cls[sig.xs] ?? styles.chipNone) : styles.chipNone;

@@ -252,6 +252,11 @@ function ScorePanel({ score }) {
         ? styles.scoreRowGreen
         : styles.scoreRowAmber
     },
+    score.velocityFlag && {
+      icon: '📉', label: 'VELOCITY',
+      val: score.velocityFlag,
+      cls: styles.scoreRowAmber
+    },
   ].filter(Boolean);
 
   return (
@@ -1485,34 +1490,89 @@ function ManageTab({ positions, price, ticker, sig }) {
             ? (dXs >= 2 && wXs >= 2)
             : (dXs <= -2 && wXs <= -2);
 
-          let signal, signalCls, action, detail;
+          // ── Protect the main engine ──────────────────
+          // Check if LEAP is working well — if so, be
+          // conservative or skip to protect the move
+          const leapStrike  = leap.k ?? 0;
+          const leapITM     = isCallLeap
+            ? price - leapStrike   // positive = ITM for call
+            : leapStrike - price;  // positive = ITM for put
+          const leapITMPct  = leapStrike > 0
+            ? (leapITM / leapStrike * 100) : 0;
+          const leapDeepITM = leapITMPct > 20;
+          const leapModITM  = leapITMPct > 5 && leapITMPct <= 20;
 
-          if (bigMove) {
-            signal    = '🚫 SKIP HARVEST';
-            signalCls = styles.harvestSkip;
-            action    = 'Strong signal in LEAP direction';
-            detail    = 'Do not sell premium — let LEAP run this cycle';
+          // Earnings check from fundamentals
+          const earningsDte = fundamentals?.nextEarnings?.dte ?? 999;
+          const earningsClose = earningsDte <= 14;
+
+          // Suggested strike calculation
+          // Aggressive: 5% OTM from current price
+          // Moderate: 10% OTM
+          // Conservative: 15% OTM
+          const getStrike = (pct) => {
+            if (!price) return null;
+            const raw = isCallLeap
+              ? price * (1 + pct / 100)
+              : price * (1 - pct / 100);
+            return Math.round(raw / 5) * 5; // round to nearest $5
+          };
+
+          // Expiry: prefer 14-21 DTE
+          const expiries = getExpiries(2, 4);
+          const bestExp = expiries.find(e => e.dte >= 14 && e.dte <= 21)
+            ?? expiries[0];
+
+          let signal, signalCls, action, detail, suggestedStrike, skipReason;
+
+          if (earningsClose) {
+            signal      = '⏸ PAUSE — Earnings Soon';
+            signalCls   = styles.harvestSkip;
+            action      = `Earnings in ${earningsDte}d — do not open new harvest`;
+            detail      = 'Binary event risk could gap through your short strike. Wait until after earnings to harvest.';
+            skipReason  = 'earnings';
+          } else if (bigMove) {
+            signal      = '🚫 SKIP HARVEST';
+            signalCls   = styles.harvestSkip;
+            action      = isCallLeap
+              ? 'Strong bull signal — let LEAP run'
+              : 'Strong bear signal — let LEAP run';
+            detail      = 'W+D strongly aligned with your LEAP direction. Do not sell premium — you will cap your profit on the main move.';
+            skipReason  = 'bigmove';
+          } else if (leapDeepITM) {
+            signal      = '◐ CONSERVATIVE — LEAP Working';
+            signalCls   = styles.harvestCon;
+            action      = isCallLeap
+              ? 'LEAP is deep ITM — sell far OTM call only'
+              : 'LEAP is deep ITM — sell far OTM put only';
+            detail      = `LEAP is ${leapITMPct.toFixed(0)}% ITM — protect the profit. Stay 15%+ OTM on harvest.`;
+            suggestedStrike = getStrike(15);
           } else if (opposing) {
-            signal    = '⚡ AGGRESSIVE HARVEST';
-            signalCls = styles.harvestAgg;
-            action    = isCallLeap
+            signal      = '⚡ AGGRESSIVE HARVEST';
+            signalCls   = styles.harvestAgg;
+            action      = isCallLeap
               ? 'Short-term bearish — sell call closer to money'
               : 'Short-term bullish — sell put closer to money';
-            detail    = '4H/1H opposing LEAP — elevated premium, more buffer';
-          } else if (aligned) {
-            signal    = '◐ CONSERVATIVE HARVEST';
-            signalCls = styles.harvestCon;
-            action    = isCallLeap
+            detail      = '4H/1H opposing LEAP — elevated premium available. LEAP not yet ITM so harvest is safe.';
+            suggestedStrike = getStrike(5);
+          } else if (leapModITM || aligned) {
+            signal      = '◐ CONSERVATIVE HARVEST';
+            signalCls   = styles.harvestCon;
+            action      = isCallLeap
               ? 'Sell far OTM call — protect upside'
               : 'Sell far OTM put — protect downside';
-            detail    = '4H/1H aligned with LEAP — stay far OTM';
+            detail      = leapModITM
+              ? `LEAP is ${leapITMPct.toFixed(0)}% ITM — stay conservative, protect the move.`
+              : '4H/1H aligned with LEAP — stay far OTM to avoid capping gains.';
+            suggestedStrike = getStrike(12);
           } else {
-            signal    = '○ MODERATE HARVEST';
-            signalCls = styles.harvestMod;
-            action    = isCallLeap
+            signal      = '○ MODERATE HARVEST';
+            signalCls   = styles.harvestMod;
+            action      = isCallLeap
               ? 'Sell 25-delta call, 2-3 weeks out'
               : 'Sell 25-delta put, 2-3 weeks out';
-            detail    = 'Neutral short-term — standard harvest cycle';
+            detail      = 'Neutral short-term — standard harvest cycle. 10% OTM gives good premium with safety buffer.';
+            suggestedStrike = getStrike(10);
           }
 
           return (
@@ -1531,13 +1591,30 @@ function ManageTab({ positions, price, ticker, sig }) {
               </div>
               <div className={styles.harvestAction}>{action}</div>
               <div className={styles.harvestDetail}>{detail}</div>
+              {/* Suggested trade */}
+              {!skipReason && suggestedStrike && !activeHedge && bestExp && (
+                <div className={styles.harvestSuggested}>
+                  <span className={styles.harvestSuggestedLabel}>
+                    Suggested:
+                  </span>
+                  <span className={styles.harvestSuggestedTrade}>
+                    Sell ${suggestedStrike} {isCallLeap ? 'call' : 'put'}
+                    · {bestExp.label} · {bestExp.dte}d
+                  </span>
+                  <span className={styles.harvestSuggestedBuffer}>
+                    {price && suggestedStrike
+                      ? `${Math.abs(((suggestedStrike - price) / price * 100)).toFixed(1)}% buffer`
+                      : ''}
+                  </span>
+                </div>
+              )}
               {activeHedge ? (
                 <div className={styles.harvestActive}>
                   ✓ Active: {activeHedge.lbl} · {activeHedge.exp} · {activeHedge.dte}d left
                 </div>
-              ) : bigMove ? null : (
+              ) : skipReason ? null : (
                 <div className={styles.harvestMissing}>
-                  ⚠ No harvest open — sell a short{isCallLeap ? ' call' : ' put'} against this LEAP now
+                  ⚠ No harvest open — sell a short {isCallLeap ? 'call' : 'put'} against this LEAP now
                 </div>
               )}
             </div>

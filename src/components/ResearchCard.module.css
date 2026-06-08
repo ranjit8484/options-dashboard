@@ -956,6 +956,30 @@
   font-size: 11px; color: var(--text3); line-height: 1.5;
 }
 
+.harvestSuggested {
+  display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap;
+  padding: 7px 10px;
+  background: rgba(99,102,241,.08);
+  border: 1px solid rgba(99,102,241,.2);
+  border-radius: var(--radius-sm);
+  margin-top: 6px;
+}
+.harvestSuggestedLabel {
+  font-family: var(--mono); font-size: 10px;
+  font-weight: 700; color: var(--text3);
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.harvestSuggestedTrade {
+  font-family: var(--mono); font-size: 12px;
+  font-weight: 700; color: var(--accent2);
+}
+.harvestSuggestedBuffer {
+  font-family: var(--mono); font-size: 11px;
+  color: var(--text3);
+  margin-left: auto;
+}
+
 @media (max-width: 600px) {
 
   /* Full screen card on mobile */

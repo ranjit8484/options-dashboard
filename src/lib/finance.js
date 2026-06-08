@@ -943,13 +943,13 @@ export function calcCompositeScore({
       rangePos = (spot - low) / range;
 
       if (dir === 'bull') {
-        if (rangePos > 0.90) {
+        if (rangePos > 0.80) {
           rangeScore = 0;
           rangeFlag  = {
             level: 'BLOCK',
             msg: `At ${Math.round(rangePos*100)}% of 52wk range — near highs. Bull move largely done. DO NOT chase.`
           };
-        } else if (rangePos > 0.75) {
+        } else if (rangePos > 0.65) {
           rangeScore = 5;
           rangeFlag  = {
             level: 'WARN',
@@ -971,13 +971,13 @@ export function calcCompositeScore({
           rangeScore = 15;
         }
       } else if (dir === 'bear') {
-        if (rangePos < 0.10) {
+        if (rangePos < 0.20) {
           rangeScore = 0;
           rangeFlag  = {
             level: 'BLOCK',
             msg: `At ${Math.round(rangePos*100)}% of 52wk range — near lows. Bear move largely done. DO NOT short.`
           };
-        } else if (rangePos < 0.25) {
+        } else if (rangePos < 0.35) {
           rangeScore = 5;
           rangeFlag  = {
             level: 'WARN',
@@ -999,6 +999,32 @@ export function calcCompositeScore({
           rangeScore = 15;
         }
       }
+    }
+  }
+
+  // ── 1b. Range Velocity Penalty ──────────────────
+  // If signal is very mature AND price is extended
+  // likely a late entry — penalize score
+  // Uses wSince as proxy for how long move has run
+  let velocityPenalty = 0;
+  let velocityFlag    = null;
+  if (rangePos !== null && wSince > 20) {
+    if (dir === 'bull' && rangePos > 0.65) {
+      velocityPenalty = 15;
+      velocityFlag    = `W signal ${wSince} candles + extended range — late entry, move likely mature`;
+    } else if (dir === 'bear' && rangePos < 0.35) {
+      velocityPenalty = 15;
+      velocityFlag    = `W signal ${wSince} candles + oversold range — late entry, move likely mature`;
+    }
+  }
+  // Additional penalty for very mature signals at extremes
+  if (rangePos !== null && wSince > 30) {
+    if (dir === 'bull' && rangePos > 0.55) {
+      velocityPenalty = Math.max(velocityPenalty, 20);
+      velocityFlag    = `W signal ${wSince} candles — trend exhaustion very likely`;
+    } else if (dir === 'bear' && rangePos < 0.45) {
+      velocityPenalty = Math.max(velocityPenalty, 20);
+      velocityFlag    = `W signal ${wSince} candles — trend exhaustion very likely`;
     }
   }
 
@@ -1158,21 +1184,29 @@ export function calcCompositeScore({
   // ── Final Score ──────────────────────────────────
   const raw = rangeScore + alignScore + maturityScore
     + marketScore + extScore + macdBonus
-    - rsiPenalty - earningsPenalty;
+    - rsiPenalty - earningsPenalty - velocityPenalty;
   const score = Math.max(0, Math.min(100, raw));
 
   // ── Tier ────────────────────────────────────────
   let tier, tierLabel, tierColor, recommendation;
 
   if (rangeFlag?.level === 'BLOCK') {
-    tier         = 'BLOCK';
-    tierLabel    = dir === 'bull'
-      ? '🚫 DO NOT TRADE — Bull Exhausted'
-      : '🚫 DO NOT TRADE — Bear Exhausted';
-    tierColor    = 'red';
-    recommendation = dir === 'bull'
-      ? 'Stock near 52-week highs. Bull move is done. Wait for reversal signal. Watch for D to turn bearish — then consider call spread.'
-      : 'Stock near 52-week lows. Bear move is done. Consider small probe trade in OPPOSITE direction. Watch for D to turn bullish.';
+    tier      = 'BLOCK';
+    tierColor = 'red';
+    if (dir === 'bull' && rangePos > 0.80) {
+      tierLabel = '🚫 Bull Exhausted — Counter-trend available';
+      recommendation = 'Bull move done. Consider BEAR call spread as counter-trend probe. Stock at highs with limited upside.';
+    } else if (dir === 'bear' && rangePos < 0.20) {
+      tierLabel = '🚫 Bear Exhausted — Counter-trend available';
+      recommendation = 'Bear move done. Consider BULL put spread as counter-trend probe. Stock at lows with limited downside.';
+    } else {
+      tierLabel = dir === 'bull'
+        ? '🚫 DO NOT TRADE — Bull Exhausted'
+        : '🚫 DO NOT TRADE — Bear Exhausted';
+      recommendation = dir === 'bull'
+        ? 'Stock near 52-week highs. Bull move is done. Wait for reversal signal.'
+        : 'Stock near 52-week lows. Bear move is done. Wait for recovery signal.';
+    }
   } else if (earningsPenalty >= 25) {
     tier         = 'BLOCK';
     tierLabel    = '🚫 DO NOT TRADE — Earnings Imminent';
@@ -1251,6 +1285,7 @@ export function calcCompositeScore({
     phase,
     rangePos,
     rangeFlag,
+    velocityFlag,
     alignFlag,
     maturityFlag,
     marketFlag,
