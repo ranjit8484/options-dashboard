@@ -34,9 +34,9 @@ export function PlatBadge({ platform }) {
       display:'inline-flex', alignItems:'center', gap:'5px',
       padding:'2px 8px', borderRadius:'5px', fontSize:'11px',
       fontFamily:'monospace', fontWeight:'700',
-      background:'rgba(27,94,32,.08)',
-      border:'1px solid rgba(139,105,20,.25)',
-      color:'#5C3D00', marginLeft:'6px',
+      background:'rgba(27,94,32,.15)',
+      border:'1px solid rgba(139,105,20,.35)',
+      color:'#C8A951', marginLeft:'6px',
       verticalAlign:'middle'
     }}>
       <svg width="12" height="12" viewBox="0 0 14 14" xmlns="http://www.w3.org/2000/svg">

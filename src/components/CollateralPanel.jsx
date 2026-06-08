@@ -3,7 +3,7 @@ import { calcCollateral, fk$ } from "../lib/finance";
 import { loadParams } from "../hooks/useParams";
 import styles from "./CollateralPanel.module.css";
 
-export function CollateralPanel({ groups, prices, balances, plat }) {
+export function CollateralPanel({ groups, prices, balances, plat, onOpenResearch, signals }) {
   const [open, setOpen] = useState(false);
   const params = loadParams();
 
@@ -15,11 +15,14 @@ export function CollateralPanel({ groups, prices, balances, plat }) {
     })).filter(g => g.pos.length > 0);
 
     // Total account value for the selected platform
+    const rhBal  = balances?.rh  || 0;
+    const fidBal = balances?.fid || 0;
     const totalAccount = plat === 'RH'
-      ? (balances?.rh || 0)
+      ? rhBal
       : plat === 'FID'
-      ? (balances?.fid || 0)
-      : (balances?.rh || 0) + (balances?.fid || 0);
+      ? fidBal
+      : rhBal + fidBal;
+    const safeAccount = totalAccount > 0 ? totalAccount : null;
 
     const map = {};
     let grand = 0;
@@ -34,14 +37,15 @@ export function CollateralPanel({ groups, prices, balances, plat }) {
 
     const tickers = Object.entries(map)
       .map(([t, c]) => {
-        const pctOfAccount = totalAccount > 0
-          ? Math.round(c / totalAccount * 100) : 0;
+        const pctOfAccount = safeAccount
+          ? Math.round(c / safeAccount * 100) : null;
         const pctOfColl = grand > 0
           ? Math.round(c / grand * 100) : 0;
         const warnPct  = params.warnTickerCollPct  ?? 20;
         const blockPct = params.blockTickerCollPct ?? 50;
-        const status = pctOfAccount >= blockPct ? 'block'
-                     : pctOfAccount >= warnPct  ? 'warn' : 'ok';
+        const status = pctOfAccount === null ? 'ok'
+          : pctOfAccount >= blockPct ? 'block'
+          : pctOfAccount >= warnPct  ? 'warn' : 'ok';
         return { t, c, pctOfAccount, pctOfColl, status };
       })
       .sort((a, b) => b.c - a.c);
@@ -83,7 +87,10 @@ export function CollateralPanel({ groups, prices, balances, plat }) {
       {open && (
         <div className={styles.body}>
           {tickers.map(({ t, c, pctOfAccount, pctOfColl, status }) => (
-            <div key={t} className={styles.row}>
+            <div key={t} className={styles.row}
+              onClick={() => onOpenResearch && signals?.[t] && onOpenResearch(t, signals[t], [])}
+              style={{ cursor: onOpenResearch ? 'pointer' : 'default' }}
+            >
               <span className={styles.ticker}>{t}</span>
               <div className={styles.barWrap}>
                 <div
@@ -99,7 +106,7 @@ export function CollateralPanel({ groups, prices, balances, plat }) {
                 status === 'block' ? styles.pctBlock :
                 status === 'warn'  ? styles.pctWarn  : ''
               }`}>
-                {pctOfAccount}%
+                {pctOfAccount !== null ? `${pctOfAccount}%` : '—'}
                 {status !== 'ok' && ' ⚠'}
               </span>
             </div>

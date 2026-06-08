@@ -13,6 +13,7 @@ import { SignalsPage } from "./pages/SignalsPage";
 import { ClosedPage } from "./pages/ClosedPage";
 import { ParametersModal } from "./components/ParametersModal";
 import { loadParams } from "./hooks/useParams";
+import { ResearchCard } from "./components/ResearchCard";
 import styles from "./App.module.css";
 
 const STATUS_ORDER = { danger: 0, watch: 1, safe: 2 };
@@ -58,6 +59,7 @@ export default function App() {
   const [rulesOpen, setRulesOpen] = useState(false);
   const [paramsOpen, setParamsOpen] = useState(false);
   const [params, setParams] = useState(loadParams);
+  const [researchTarget, setResearchTarget] = useState(null);
   const [activeTab, setActiveTab] = useState(
     isPublic ? 'signals' : 'active'
   );
@@ -334,6 +336,15 @@ export default function App() {
             prices={prices}
             balances={balances}
             plat={plat}
+            signals={signals}
+            onOpenResearch={(ticker, sig, positions) => {
+              setResearchTarget({
+                ticker,
+                sig,
+                activePositions: positions ?? groups.find(g => g.t === ticker)?.pos ?? [],
+                fallbackSpot: prices?.[ticker] ?? null,
+              });
+            }}
           />
 
           {/* ── Active Positions sort bar ── */}
@@ -388,6 +399,17 @@ export default function App() {
         onClose={() => setParamsOpen(false)}
         onSave={p => setParams(p)}
       />}
+      {researchTarget && (
+        <ResearchCard
+          ticker={researchTarget.ticker}
+          spot={prices?.[researchTarget.ticker] || researchTarget.fallbackSpot}
+          sig={researchTarget.sig}
+          activePositions={researchTarget.activePositions}
+          balances={balances}
+          allSignals={signals}
+          onClose={() => setResearchTarget(null)}
+        />
+      )}
       </>)}
     </div>
   );
