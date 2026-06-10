@@ -331,7 +331,7 @@ export default function App() {
             plat={plat}
           />
           {!isPublic && groups.some(g =>
-            g.pos.some(p => (p.dir === 'lc' || p.dir === 'lp') && (p.dte ?? 0) > 60)
+            g.pos.some(p => (p.dir === 'lc' || p.dir === 'lp') && (p.dte ?? 0) > 0)
           ) && (
             <LeapHarvestPanel
               groups={groups}

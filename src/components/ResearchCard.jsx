@@ -114,6 +114,23 @@ function ContextPanel({ context }) {
           {activeAlert.message}
         </div>
       )}
+      {/* Context vs signal conflict warning */}
+      {hasContextConflict && (
+        <div className={styles.contextConflict}>
+          <span className={styles.contextConflictIcon}>⚠</span>
+          <div className={styles.contextConflictBody}>
+            <div className={styles.contextConflictTitle}>
+              Context conflicts with signals
+            </div>
+            <div className={styles.contextConflictDesc}>
+              Technical signals say <strong>{signalDir}</strong> but
+              your context file says <strong>{contextDir}</strong>
+              {contextConviction ? ` (${contextConviction} conviction)` : ''}.
+              Review before trading.
+            </div>
+          </div>
+        </div>
+      )}
       {context.thesis?.summary && (
         <div className={styles.contextRow}>
           <span className={styles.contextLbl}>
@@ -1316,7 +1333,8 @@ function TradeRecommendationTab({
   ticker, spot, isBull, conviction,
   account, params, ivOverride, sig,
   fundamentals, compositeScore, earningsDte,
-  isCounterTrend, rangePos
+  isCounterTrend, rangePos,
+  isAvoidPeriod, avoidUntil, avoidDaysLeft, context
 }) {
   // Counter-trend flips the direction
   // Bull exhausted → sell calls (bear direction)
@@ -1372,6 +1390,24 @@ function TradeRecommendationTab({
 
   return (
     <div className={styles.tabContent}>
+
+      {/* Avoid period warning */}
+      {isAvoidPeriod && (
+        <div className={styles.avoidBanner}>
+          <span>⏸</span>
+          <div>
+            <div className={styles.avoidBannerTitle}>
+              Context says avoid for {avoidDaysLeft} more day{avoidDaysLeft > 1 ? 's' : ''}
+              {avoidUntil ? ` (until ${avoidUntil})` : ''}
+            </div>
+            <div className={styles.avoidBannerDesc}>
+              {context?.tradeGuidance?.warning
+                ?? context?.alert?.message
+                ?? 'Your context file recommends waiting before trading this ticker.'}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Counter-trend banner */}
       {isCounterTrend && (
@@ -2400,6 +2436,23 @@ export function ResearchCard({
   const { data: fundamentals, loading: fundLoading } = useFundamentals(ticker);
   const { data: context } = useContext(ticker);
 
+  // Detect context vs signal conflicts
+  const contextDir = context?.thesis?.direction ?? null;
+  const contextConviction = context?.thesis?.conviction ?? null;
+  const signalDir = isBull ? 'bullish' : 'bearish';
+  const hasContextConflict = contextDir !== null
+    && contextDir !== 'neutral'
+    && contextDir !== signalDir;
+
+  // avoidUntil check
+  const avoidUntil = context?.tradeGuidance?.avoidUntil
+    ?? context?.alert?.avoidUntil ?? null;
+  const isAvoidPeriod = avoidUntil
+    && new Date(avoidUntil) > new Date();
+  const avoidDaysLeft = avoidUntil
+    ? Math.ceil((new Date(avoidUntil) - new Date()) / 86400000)
+    : 0;
+
   const defaultIv = Math.round(getIV(ticker) * 100);
   const [ivOverride, setIvOverride] = useState(defaultIv);
   const [liveSpot, setLiveSpot] = useState(null);
@@ -2479,7 +2532,11 @@ export function ResearchCard({
       ? [{ id:'probe', label:'🔵 Probe trade' }]
       : []),
     ...(tradeAllowed
-      ? [{ id:'trade', label: isEarningsWindow ? '📅 Trade + earnings' : '💡 Trade' }]
+      ? [{ id:'trade', label: isEarningsWindow
+          ? '📅 Trade + earnings'
+          : isAvoidPeriod
+          ? `💡 Trade ⚠ avoid ${avoidDaysLeft}d`
+          : '💡 Trade' }]
       : []),
     ...(hasPositions
       ? [{ id:'manage', label:`⚡ Manage (${activePositions.length})` }]
@@ -2622,6 +2679,10 @@ export function ResearchCard({
               earningsDte={earningsDte}
               isCounterTrend={isCounterTrend}
               rangePos={rangePos}
+              isAvoidPeriod={isAvoidPeriod}
+              avoidUntil={avoidUntil}
+              avoidDaysLeft={avoidDaysLeft}
+              context={context}
             />
           )}
           {activeTab==='probe' && (

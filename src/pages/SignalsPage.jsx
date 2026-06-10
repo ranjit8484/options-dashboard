@@ -61,17 +61,32 @@ function getReadinessTier(row, fundamentals, spot, ticker, signals) {
   // Conflicted PRIME/GOOD → MARGINAL
   if (isConflicted) return 3;
 
-  // Check entry gates for PRIME/GOOD
+  // Check entry gates using same fields as getEntryTriggers
+  // macdHist not available — use macdDir instead
   const h4 = sig?.['4H'] ?? {};
   const h1 = sig?.['1H'] ?? {};
-  const h4xs   = h4.xs ?? 0;
-  const h1xs   = h1.xs ?? 0;
-  const h4Macd = h4.macdHist ?? 0;
+  const h4xs      = h4.xs ?? 0;
+  const h1xs      = h1.xs ?? 0;
+  const h4MacdDir = h4.macdDir ?? '';
+  const h4MacdCross = h4.macdCross ?? null;
 
-  const gatesReady = isBull
-    ? ((h4xs >= 1 || h1xs >= 1) && h4Macd > 0)
-    : ((h4xs <= -1 || h1xs <= -1) && h4Macd < 0);
+  // Gate 3: 4H or 1H timing confirmed
+  const timingOk = isBull
+    ? (h4xs >= 1 || h1xs >= 1)
+    : (h4xs <= -1 || h1xs <= -1);
 
+  // Gate 4: MACD supporting
+  // Use macdDir or fresh cross as proxy
+  const macdOk = isBull
+    ? (h4MacdDir === 'bull' || h4MacdCross === 'bull')
+    : (h4MacdDir === 'bear' || h4MacdCross === 'bear');
+
+  const gatesReady = timingOk && macdOk;
+  const almostReady = timingOk || macdOk;
+
+  // All gates clear → Trade Now
+  // One gate pending → Watch
+  // No gates → still Watch (valid setup, just timing)
   return gatesReady ? 0 : 1;
 }
 
@@ -431,14 +446,14 @@ export function LeapHarvestPanel({ groups, prices, closed, signals, onOpenResear
       : groups.filter(g =>
           g.pos.some(p =>
             (p.dir === 'lc' || p.dir === 'lp') &&
-            (p.dte ?? 0) > 60 &&
+            (p.dte ?? 0) > 0 &&
             (p.plat || '').toUpperCase() === platFilter
           )
         );
     filteredGroups.forEach(g => {
       const leaps = g.pos.filter(p =>
         (p.dir === 'lc' || p.dir === 'lp') &&
-        (p.dte ?? 0) > 60 &&
+        (p.dte ?? 0) > 0 &&
         (!platFilter || (p.plat || '').toUpperCase() === platFilter)
       );
       if (!leaps.length) return;
@@ -518,12 +533,58 @@ export function LeapHarvestPanel({ groups, prices, closed, signals, onOpenResear
         }
       });
     });
-    return list.sort((a,b) =>
-      a.urgency === 'warn' ? -1 : 1
-    );
+    // Shared scale — largest cost = reference point
+    const maxCost = list.reduce((m, i) => Math.max(m, i.leapCost), 1);
+    list.forEach(item => {
+      item.scaledPct = Math.min(100, Math.round(item.leapCost / maxCost * 100));
+      item.scaledHarvestPct = Math.min(100, Math.round(item.harvested / maxCost * 100));
+      // Pace: harvest per week since LEAP opened
+      const leapOpenDate = item.leap.openDate ? new Date(item.leap.openDate) : null;
+      const weeksOpen = leapOpenDate
+        ? Math.max(1, (Date.now() - leapOpenDate) / (7 * 86400000))
+        : 1;
+      const weeklyPace = item.harvested / weeksOpen;
+      const remainingCost = Math.max(0, item.leapCost - item.harvested);
+      item.weeklyPace = Math.round(weeklyPace);
+      item.weeksToPayoff = weeklyPace > 0
+        ? Math.ceil(remainingCost / weeklyPace) : null;
+      // LEAP DTE — use pre-calculated dte from parseRows directly
+      item.leapDte = item.leap.dte ?? null;
+    });
+    // Classify into 3 sections
+    list.forEach(item => {
+      const hedgeExpiring = item.activeHedge && (item.activeHedge.dte ?? 99) <= 7;
+      if (hedgeExpiring) {
+        item.section = 'expiring';
+        item.sectionOrder = 0;
+      } else if (!item.activeHedge) {
+        item.section = 'noHarvest';
+        item.sectionOrder = 1;
+      } else {
+        item.section = 'active';
+        item.sectionOrder = 2;
+      }
+    });
+
+    // Sort by section then by leapDte ascending within noHarvest
+    return list.sort((a, b) => {
+      if (a.sectionOrder !== b.sectionOrder)
+        return a.sectionOrder - b.sectionOrder;
+      // Within noHarvest: shortest LEAP DTE first (most urgent)
+      if (a.section === 'noHarvest') {
+        return (a.leapDte ?? 999) - (b.leapDte ?? 999);
+      }
+      return 0;
+    });
   }, [groups, prices, closed]);
 
-  const warnCount = items.filter(i => i.urgency === 'warn').length;
+  const totalCost      = items.reduce((s, i) => s + i.leapCost, 0);
+  const totalHarvested = items.reduce((s, i) => s + i.harvested, 0);
+  const totalWeeklyPace = items.reduce((s, i) => s + (i.weeklyPace || 0), 0);
+  const noHarvestCount = items.filter(i => i.section === 'noHarvest').length;
+  const expiringCount  = items.filter(i => i.section === 'expiring').length;
+  const weeksToFullPayoff = totalWeeklyPace > 0
+    ? Math.ceil((totalCost - totalHarvested) / totalWeeklyPace) : null;
 
   return (
     <div className={styles.leapHarvestPanel}>
@@ -531,15 +592,18 @@ export function LeapHarvestPanel({ groups, prices, closed, signals, onOpenResear
         className={styles.leapHarvestHeader}
         onClick={() => setOpen(o => !o)}>
         <span className={styles.leapHarvestTitle}>💰 LEAP Harvest</span>
-        {warnCount > 0 && (
-          <span className={styles.leapHarvestBadge}>
-            {warnCount}
+        {expiringCount > 0 && (
+          <span className={styles.leapHarvestBadgeRed}>
+            {expiringCount} expiring
           </span>
         )}
-        {warnCount === 0 && (
-          <span className={styles.leapHarvestGood}>
-            all hedged ✓
+        {noHarvestCount > 0 && (
+          <span className={styles.leapHarvestBadge}>
+            {noHarvestCount} not harvesting
           </span>
+        )}
+        {noHarvestCount === 0 && expiringCount === 0 && (
+          <span className={styles.leapHarvestGood}>all active ✓</span>
         )}
         <span style={{marginLeft:'auto',fontSize:'11px',
           color:'var(--text3)'}}>
@@ -547,87 +611,257 @@ export function LeapHarvestPanel({ groups, prices, closed, signals, onOpenResear
         </span>
       </button>
       {open && (
+        <div className={styles.leapHarvestSummary}>
+          <div className={styles.leapHarvestSumItem}>
+            <span className={styles.leapHarvestSumLabel}>Total cost</span>
+            <span className={styles.leapHarvestSumVal}>
+              ${Math.round(totalCost / 1000)}k
+            </span>
+            <span className={styles.leapHarvestSumSub}>
+              {items.length} LEAPs
+            </span>
+          </div>
+          <div className={styles.leapHarvestSumItem}>
+            <span className={styles.leapHarvestSumLabel}>Recovered</span>
+            <span className={styles.leapHarvestSumVal}
+              style={{color: totalHarvested > 0 ? '#22c55e' : 'var(--text3)'}}>
+              ${Math.round(totalHarvested).toLocaleString()}
+            </span>
+            <span className={styles.leapHarvestSumSub}>
+              {totalCost > 0
+                ? Math.round(totalHarvested / totalCost * 100) : 0}% of cost
+            </span>
+          </div>
+          <div className={styles.leapHarvestSumItem}>
+            <span className={styles.leapHarvestSumLabel}>Weekly pace</span>
+            <span className={styles.leapHarvestSumVal}>
+              {totalWeeklyPace > 0
+                ? `$${totalWeeklyPace.toLocaleString()}` : '—'}
+            </span>
+            <span className={styles.leapHarvestSumSub}>
+              {weeksToFullPayoff ? `payoff ~${weeksToFullPayoff}w` : 'no harvests open'}
+            </span>
+          </div>
+          <div className={styles.leapHarvestSumItem}>
+            <span className={styles.leapHarvestSumLabel}>No harvest open</span>
+            <span className={styles.leapHarvestSumVal}
+              style={{color: noHarvestCount > 0 ? '#f97316' : '#22c55e'}}>
+              {noHarvestCount}
+            </span>
+            <span className={styles.leapHarvestSumSub}>
+              {noHarvestCount > 0 ? 'leaving money on table' : 'all covered ✓'}
+            </span>
+          </div>
+        </div>
+      )}
+      {open && (
         <div className={styles.leapHarvestBody}>
-          {items.map((item, i) => (
-            <div key={i}
-              className={`${styles.leapHarvestRow}
-                ${item.urgency === 'warn'
-                  ? styles.leapHarvestRowWarn
-                  : styles.leapHarvestRowSafe}`}
-              style={{ cursor: onOpenResearch ? 'pointer' : 'default' }}
-              onClick={() => onOpenResearch && onOpenResearch(
-                item.ticker,
-                signals?.[item.ticker] ?? null,
-                groups?.find(g => g.t === item.ticker)?.pos ?? []
-              )}>
-              <div className={styles.leapHarvestLeft}>
-                <div style={{display:'flex',alignItems:'center',gap:'6px'}}>
-                  <span className={styles.leapHarvestTicker}>
-                    {item.ticker}
+          {['expiring','noHarvest','active'].map(section => {
+            const sectionItems = items.filter(i => i.section === section);
+            if (!sectionItems.length) return null;
+            const sectionMeta = {
+              expiring:  { dot: '#ef4444', label: 'Expiring soon — open next harvest now' },
+              noHarvest: { dot: '#f97316', label: 'No harvest open — sell one now' },
+              active:    { dot: '#22c55e', label: 'Active harvest — running' },
+            }[section];
+            return (
+              <div key={section}>
+                <div className={styles.leapSectionHdr}>
+                  <span className={styles.leapSectionDot}
+                    style={{background: sectionMeta.dot}} />
+                  <span className={styles.leapSectionLabel}>
+                    {sectionMeta.label}
                   </span>
-                  {item.plat === 'RH' && (
-                    <span style={{
-                      display:'inline-flex',alignItems:'center',gap:'4px',
-                      padding:'1px 6px',borderRadius:'4px',fontSize:'10px',
-                      fontFamily:'monospace',fontWeight:'700',
-                      background:'rgba(202,255,0,.1)',
-                      border:'1px solid rgba(202,255,0,.2)',color:'#7a9900'
-                    }}>
-                      <svg width="10" height="10" viewBox="0 0 14 14"><rect width="14" height="14" rx="3" fill="#CAFF00"/><path d="M7 12 C7 12 5.5 8 7 5.5 C8.5 3 10 5 9.5 7 C9 9 7 9 7 12Z" fill="#111"/></svg>
-                      RH
-                    </span>
-                  )}
-                  {item.plat === 'FID' && (
-                    <span style={{
-                      display:'inline-flex',alignItems:'center',gap:'4px',
-                      padding:'1px 6px',borderRadius:'4px',fontSize:'10px',
-                      fontFamily:'monospace',fontWeight:'700',
-                      background:'rgba(27,94,32,.1)',
-                      border:'1px solid rgba(139,105,20,.25)',color:'#C8A951'
-                    }}>
-                      <svg width="10" height="10" viewBox="0 0 14 14"><rect width="14" height="14" rx="3" fill="#1B5E20"/><circle cx="7" cy="7" r="5" fill="#2E7D32"/><polygon points="7,3 9.5,11 7,9.5 4.5,11" fill="#C8A951"/></svg>
-                      FID
-                    </span>
-                  )}
+                  <span className={styles.leapSectionCount}>
+                    {sectionItems.length}
+                  </span>
                 </div>
-                <span className={styles.leapHarvestLbl}>
-                  {item.leap.k} Long {item.leapDir === 'call' ? 'Call' : 'Put'}
-                  · {item.leap.exp}
-                </span>
+                {sectionItems.map((item, i) => {
+                  const isExpiring = section === 'expiring';
+                  const isNoHarvest = section === 'noHarvest';
+                  const leapUrgent = (item.leapDte ?? 999) <= 45;
+                  // Suggested target strike
+                  const price = prices?.[item.ticker];
+                  const suggestedStrike = price
+                    ? Math.round(price * (item.isCallLeap ? 1.08 : 0.92) / 5) * 5
+                    : null;
+                  // Weeks since LEAP opened
+                  const leapOpenDate = item.leap.openDate
+                    ? new Date(item.leap.openDate) : null;
+                  const weeksSinceOpen = leapOpenDate
+                    ? Math.round((Date.now() - leapOpenDate) / (7 * 86400000))
+                    : null;
+
+                  return (
+                    <div key={i}
+                      className={`${styles.leapHarvestRow}
+                        ${isExpiring ? styles.leapRowExpiring
+                          : isNoHarvest ? styles.leapRowNoHarvest
+                          : styles.leapRowActive}`}
+                      style={{cursor: onOpenResearch ? 'pointer' : 'default'}}
+                      onClick={() => onOpenResearch && onOpenResearch(
+                        item.ticker,
+                        signals?.[item.ticker] ?? null,
+                        groups?.find(g => g.t === item.ticker)?.pos ?? []
+                      )}>
+
+                      {/* Left */}
+                      <div className={styles.leapHarvestLeft}>
+                        <div style={{display:'flex',alignItems:'center',gap:'5px'}}>
+                          <span className={styles.leapHarvestTicker}>{item.ticker}</span>
+                          {item.plat === 'RH' && (
+                            <span style={{display:'inline-flex',alignItems:'center',gap:'3px',padding:'1px 5px',borderRadius:'3px',fontSize:'9px',fontFamily:'monospace',fontWeight:'700',background:'rgba(202,255,0,.1)',border:'1px solid rgba(202,255,0,.2)',color:'#7a9900'}}>
+                              <svg width="9" height="9" viewBox="0 0 14 14"><rect width="14" height="14" rx="3" fill="#CAFF00"/><path d="M7 12 C7 12 5.5 8 7 5.5 C8.5 3 10 5 9.5 7 C9 9 7 9 7 12Z" fill="#111"/></svg>RH
+                            </span>
+                          )}
+                          {item.plat === 'FID' && (
+                            <span style={{display:'inline-flex',alignItems:'center',gap:'3px',padding:'1px 5px',borderRadius:'3px',fontSize:'9px',fontFamily:'monospace',fontWeight:'700',background:'rgba(27,94,32,.1)',border:'1px solid rgba(139,105,20,.2)',color:'#C8A951'}}>
+                              <svg width="9" height="9" viewBox="0 0 14 14"><rect width="14" height="14" rx="3" fill="#1B5E20"/><circle cx="7" cy="7" r="5" fill="#2E7D32"/><polygon points="7,3 9.5,11 7,9.5 4.5,11" fill="#C8A951"/></svg>FID
+                            </span>
+                          )}
+                        </div>
+                        <span className={styles.leapHarvestLbl}>
+                          {item.leap.k} Long {item.leapDir === 'call' ? 'Call' : 'Put'}
+                          · {item.leap.exp}
+                        </span>
+                        {item.leapDte !== null && (
+                          <span className={styles.leapDtePill}
+                            style={{
+                              background: item.leapDte < 30
+                                ? 'rgba(239,68,68,.12)'
+                                : item.leapDte < 60
+                                ? 'rgba(245,158,11,.12)'
+                                : 'var(--bg3)',
+                              color: item.leapDte < 30 ? '#dc2626'
+                                : item.leapDte < 60 ? '#b45309'
+                                : 'var(--text3)'
+                            }}>
+                            {item.leapDte}d left
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Pct */}
+                      <div className={styles.leapPctCol}
+                        style={{color: item.offsetPct >= 50 ? '#22c55e'
+                          : item.offsetPct >= 20 ? '#f59e0b'
+                          : item.offsetPct > 0 ? '#ef4444'
+                          : 'var(--text3)'}}>
+                        {item.offsetPct > 0 ? `${item.offsetPct}%` : '—'}
+                      </div>
+
+                      {/* Bar + amounts */}
+                      <div className={styles.leapHarvestMid}>
+                        <div className={styles.leapHarvestProgressWrap}>
+                          <div className={styles.leapHarvestProgressBg}
+                            style={{width:`${item.scaledPct}%`, minWidth:'4px'}}>
+                            <div className={styles.leapHarvestBar}
+                              style={{
+                                width: item.leapCost > 0
+                                  ? `${Math.min(100, Math.round(item.harvested / item.leapCost * 100))}%`
+                                  : '0%',
+                                background: item.paidOff ? '#00C805'
+                                  : item.offsetPct >= 50 ? '#22c55e'
+                                  : item.offsetPct >= 25 ? '#f59e0b'
+                                  : item.offsetPct > 0 ? '#ef4444'
+                                  : 'transparent'
+                              }}
+                            />
+                          </div>
+                        </div>
+                        <div className={styles.leapBarRow}>
+                          <span className={styles.leapBarAmounts}>
+                            <span style={{
+                              color: item.harvestedDollars > 0 ? '#22c55e' : 'var(--text3)',
+                              fontWeight: '700'
+                            }}>
+                              ${item.harvestedDollars.toLocaleString()}
+                            </span>
+                            <span style={{color:'var(--text3)',margin:'0 3px'}}>/</span>
+                            <span style={{color:'var(--text2)'}}>
+                              ${item.leapCostDollars.toLocaleString()}
+                            </span>
+                            {weeksSinceOpen !== null && isNoHarvest && (
+                              <span style={{color:'var(--text3)',marginLeft:'6px',fontSize:'10px'}}>
+                                · opened {weeksSinceOpen}w ago
+                              </span>
+                            )}
+                          </span>
+                          <span className={styles.leapBarPace}
+                            style={{
+                              color: isExpiring ? '#ef4444'
+                                : isNoHarvest && leapUrgent ? '#f97316'
+                                : 'var(--text3)'
+                            }}>
+                            {isExpiring && item.activeHedge
+                              ? `${item.activeHedge.lbl} expires in ${item.activeHedge.dte}d`
+                              : isNoHarvest && leapUrgent
+                              ? `LEAP expiring in ${item.leapDte}d — sell ${item.leapDir} urgently`
+                              : isNoHarvest && suggestedStrike
+                              ? `target $${suggestedStrike} ${item.leapDir} · Jun 26`
+                              : item.weeklyPace > 0
+                              ? `$${item.weeklyPace}/wk · ${item.weeksToPayoff}w to go`
+                              : ''}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Action chip */}
+                      <div className={styles.leapHarvestRight}>
+                        {isExpiring && (
+                          <>
+                            <span className={`${styles.leapActionChip} ${styles.leapChipRed}`}>
+                              Expires in {item.activeHedge?.dte}d
+                            </span>
+                            <span className={styles.leapActionSub}>
+                              sell next {item.leapDir} before this closes
+                            </span>
+                          </>
+                        )}
+                        {isNoHarvest && leapUrgent && (
+                          <>
+                            <span className={`${styles.leapActionChip} ${styles.leapChipOrange}`}>
+                              Sell {item.leapDir} — urgent
+                            </span>
+                            <span className={styles.leapActionSub}>
+                              {item.leapDte}d left on LEAP
+                            </span>
+                          </>
+                        )}
+                        {isNoHarvest && !leapUrgent && (
+                          <>
+                            <span className={`${styles.leapActionChip} ${styles.leapChipOrange}`}>
+                              Sell {item.leapDir} now
+                            </span>
+                            <span className={styles.leapActionSub}>
+                              {weeksSinceOpen
+                                ? `${weeksSinceOpen}w since opened`
+                                : 'start recovering cost'}
+                            </span>
+                          </>
+                        )}
+                        {section === 'active' && item.activeHedge && (
+                          <>
+                            <span className={`${styles.leapActionChip}
+                              ${item.activeHedge.dte <= 7
+                                ? styles.leapChipPurple
+                                : styles.leapChipGreen}`}>
+                              {item.activeHedge.lbl} · {item.activeHedge.dte}d
+                            </span>
+                            <span className={styles.leapActionSub}>
+                              {item.activeHedge.dte <= 7
+                                ? 'prepare next after expiry'
+                                : 'harvest running'}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <div className={styles.leapHarvestMid}>
-                <div className={styles.leapHarvestProgress}>
-                  <div
-                    className={styles.leapHarvestBar}
-                    style={{
-                      width: `${Math.min(item.offsetPct, 100)}%`,
-                      background: item.paidOff
-                        ? '#00C805'
-                        : item.offsetPct >= 50
-                        ? '#22c55e'
-                        : item.offsetPct >= 25
-                        ? '#f59e0b'
-                        : '#ef4444'
-                    }}
-                  />
-                </div>
-                <span className={styles.leapHarvestPct}>
-                  {item.paidOff
-                    ? `✓ PAID OFF · $${item.harvestedDollars.toLocaleString()}`
-                    : `$${item.harvestedDollars.toLocaleString()} / $${item.leapCostDollars.toLocaleString()}`
-                  }
-                </span>
-              </div>
-              <div className={styles.leapHarvestRight}>
-                <span className={`${styles.leapHarvestAction}
-                  ${item.urgency === 'warn'
-                    ? styles.leapHarvestActionWarn
-                    : styles.leapHarvestActionSafe}`}>
-                  {item.action}
-                </span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -1039,7 +1273,7 @@ function LeapSetupTab({ allRows, prices, signals, balances, groups, onOpenResear
       .find(g => g.t === r.ticker)
       ?.pos.some(p =>
         (p.dir === 'lc' || p.dir === 'lp') &&
-        (p.dte ?? 0) > 60
+        (p.dte ?? 0) > 0
       );
     return !hasActiveLEAP;
   });

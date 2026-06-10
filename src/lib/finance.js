@@ -186,8 +186,16 @@ export function parseRows(rows) {
 
     } else {
       const isCredit = credit > 0;
+      const tradeTypeLower = (row["Trade Type"] ?? "").toLowerCase();
+      const isLeapByType = tradeTypeLower === "leap call"
+        || tradeTypeLower === "leap put";
       let dir, strike, expiry;
-      if (isCredit) {
+      if (isLeapByType) {
+        // Force long direction regardless of credit sign
+        dir    = (tradeTypeLower === "leap call" || callPut === "CALL") ? "lc" : "lp";
+        strike = buyStrike || sellStrike;
+        expiry = buyExpiry || sellExpiry;
+      } else if (isCredit) {
         dir    = callPut === "CALL" ? "sc" : "sp";
         strike = sellStrike;
         expiry = sellExpiry;
