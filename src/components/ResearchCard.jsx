@@ -1835,7 +1835,7 @@ function ProbeTab({ ticker, spot, isBull, sig, compositeScore }) {
   );
 }
 
-function ManageTab({ positions, price, ticker, sig }) {
+function ManageTab({ positions, price, ticker, sig, fundamentals }) {
   if (!positions?.length) return (
     <div className={styles.tabContent}>
       <div className={styles.noPositions}>No active positions on {ticker}</div>
@@ -2725,6 +2725,7 @@ export function ResearchCard({
               price={spot}
               ticker={ticker}
               sig={sig}
+              fundamentals={fundamentals}
             />
           )}
         </div>
