@@ -5,7 +5,12 @@
       "Bash(curl -s \"http://localhost:5173/api/exec\")",
       "Bash(curl -sL \"http://localhost:5173/api/exec\")",
       "Bash(python3 -m json.tool)",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(pkill -f vite)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(npx vercel *)"
     ]
   }
 }

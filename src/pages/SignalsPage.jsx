@@ -18,7 +18,7 @@ const CONV_ORDER = { full:0, high:1, medium:2, low:3, none:4, exit:5 };
 // Returns 0 (best) to 4 (worst) for sorting
 // ── Readiness tier ────────────────────────────────────
 // Returns { tier: 0-4, pendingGates: string[], reason: string }
-function getReadinessTier(row, fundamentals, spot, ticker, signals) {
+function getReadinessTier(row, fundamentals, spot, ticker, signals, context) {
   const { sig } = row;
   if (!sig) return { tier: 4, pendingGates: [], reason: 'No signal' };
 
@@ -71,9 +71,17 @@ function getReadinessTier(row, fundamentals, spot, ticker, signals) {
   const dAligned = isBull ? dXs >= 1 : dXs <= -1;
 
   // ── Context conflict check ──────────────────────
+  const signalDir = isBull ? 'bullish' : 'bearish';
+  const contextDir = context?.thesis?.direction ?? null;
+  const contextConviction = context?.thesis?.conviction ?? null;
+  const isContextConflict = contextDir !== null
+    && contextDir !== 'neutral'
+    && contextDir !== signalDir;
+
   const isConflicted = thesis.toLowerCase().includes('conflict')
     || thesis.toLowerCase().includes('sideways')
-    || conviction === 'low';
+    || conviction === 'low'
+    || isContextConflict;
 
   // ── Signal maturity ─────────────────────────────
   const isTooMature = wSince > 40;
@@ -90,7 +98,10 @@ function getReadinessTier(row, fundamentals, spot, ticker, signals) {
   }
 
   if (isConflicted && conviction === 'low') {
-    return { tier: 3, pendingGates: ['Context conflict'], reason: 'Context conflicts with signal' };
+    const gate = isContextConflict
+      ? 'Context conflict (low conviction)'
+      : 'Context conflict';
+    return { tier: 3, pendingGates: [gate], reason: 'Context conflicts with signal' };
   }
 
   if (cs.tier === 'WEAK' || cs.tier === 'AVOID') {
@@ -107,7 +118,12 @@ function getReadinessTier(row, fundamentals, spot, ticker, signals) {
     : (h4MacdDir === 'bear' || h4MacdCross === 'bear' || dMacdDir === 'bear');
 
   if (isConflicted) {
-    const pending = ['Context conflict — review thesis'];
+    const conflictLabel = isContextConflict && contextConviction === 'low'
+      ? 'Context conflict (low conviction)'
+      : isContextConflict
+      ? 'Context conflict — review thesis'
+      : 'Context conflict — review thesis';
+    const pending = [conflictLabel];
     if (!timingOk) pending.push('4H/1H timing');
     if (!macdOk)   pending.push('MACD alignment');
     return { tier: 1, pendingGates: pending, reason: 'Context conflict — watch only' };
@@ -929,6 +945,7 @@ export function SignalsPage({
   const [showFilter,   setShowFilter]   = useState('ALL');
   const [sortBy,       setSortBy]       = useState('readiness');
   const [fundamentalsMap, setFundamentalsMap] = useState({});
+  const [contextMap,      setContextMap]      = useState({});
 
   const activeTickers = useMemo(() => groups.map(g => g.t), [groups]);
 
@@ -944,10 +961,20 @@ export function SignalsPage({
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         if (!data) return;
-        // Response may be { [ticker]: fundamentalsObj } or { fundamentals: { [ticker]: ... } }
         const map = data.fundamentals ?? data;
         if (typeof map === 'object' && !Array.isArray(map)) {
           setFundamentalsMap(map);
+        }
+      })
+      .catch(() => {});
+
+    fetch(`/api/exec?action=context&tickers=${tickers.join(',')}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return;
+        const map = data.context ?? data;
+        if (typeof map === 'object' && !Array.isArray(map)) {
+          setContextMap(map);
         }
       })
       .catch(() => {});
@@ -982,7 +1009,8 @@ export function SignalsPage({
         fundamentals,
         prices?.[ticker] ?? null,
         ticker,
-        signals
+        signals,
+        contextMap[ticker] ?? null
       );
       const cs = sig ? calcCompositeScore({
         sig,
@@ -1002,7 +1030,7 @@ export function SignalsPage({
         phase: cs?.phase ?? null,
       };
     });
-  }, [watchlist, signals, activeTickers, params, fundamentalsMap, prices]);
+  }, [watchlist, signals, activeTickers, params, fundamentalsMap, contextMap, prices]);
 
   // Opportunities (clean, trade now)
   const opportunities = useMemo(() =>
