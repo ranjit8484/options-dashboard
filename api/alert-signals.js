@@ -1,13 +1,15 @@
 // Signals alert — runs hourly 9am-4pm ET (14:00-21:00 UTC) Mon-Fri via GitHub Actions
-// Checks all tickers for readinessTier === 0 (Trade Now) and sends to signals channel
-// Also includes tier 1 (Watch) tickers with pending gates in a separate section
+// Computes signals server-side from candle history, then runs tier logic
 //
 // Required Vercel env vars:
 //   TELEGRAM_SIGNALS_TOKEN
 //   TELEGRAM_SIGNALS_CHAT_ID
 //   VITE_FINNHUB_KEY
 
-import { calcCompositeScore } from '../src/lib/finance.js';
+import {
+  calcComposite, calcEntry, calcStrategy,
+  calcCompositeScore,
+} from '../src/lib/finance.js';
 
 const GSCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxPPb7y-mew7vsXBJ2KmRBQWG57rx8nGgyd7CvqiFXJ5HCbhLidrqcD46pUC4m4XLBRsg/exec';
 const API_BASE    = 'https://options-dashboard-taupe.vercel.app/api/exec';
@@ -16,15 +18,14 @@ const API_BASE    = 'https://options-dashboard-taupe.vercel.app/api/exec';
 const _alerted = new Set();
 
 // ── Readiness tier (mirrors SignalsPage.jsx getReadinessTier) ──────
-// Returns { tier: 0-4, pendingGates: string[], reason: string }
-function getReadinessTier(ticker, sig, spot, allSignals, fundamentals, context) {
+function getReadinessTier(ticker, sig, spot, allSigs, fundamentals, context) {
   if (!sig) return { tier: 4, pendingGates: [], reason: 'No signal' };
 
   const cs = calcCompositeScore({
     sig,
     fundamentals: fundamentals ?? null,
     spot: spot ?? null,
-    marketSig: ticker && ticker !== 'QQQ' ? (allSignals?.['QQQ'] ?? null) : null,
+    marketSig: ticker && ticker !== 'QQQ' ? (allSigs?.['QQQ'] ?? null) : null,
   });
   if (!cs) return { tier: 4, pendingGates: [], reason: 'No score' };
 
@@ -44,30 +45,26 @@ function getReadinessTier(ticker, sig, spot, allSignals, fundamentals, context) 
   const h4MacdCross = h4.macdCross ?? null;
   const dMacdDir    = sig?.D?.macdDir ?? '';
 
-  // ── Hard blocks ──────────────────────────────────
+  // Hard blocks
   const wAligned = isBull ? wXs >= 1 : wXs <= -1;
   if (!wAligned) return { tier: 4, pendingGates: [], reason: 'No W signal' };
-
   if (conviction === 'none' || conviction === 'exit')
     return { tier: 4, pendingGates: [], reason: 'No conviction' };
 
-  // ── Counter-trend ────────────────────────────────
+  // Counter-trend
   const isRangeBlock = cs.tier === 'BLOCK' && rangePos !== null
     && ((isBull && rangePos > 0.82) || (!isBull && rangePos < 0.18));
-  const isMature = wSince >= 10;
-
-  if (isRangeBlock && isMature)
+  if (isRangeBlock && wSince >= 10)
     return { tier: 2, pendingGates: [], reason: 'Exhausted — counter-trend probe' };
-
   if (cs.tier === 'BLOCK')
     return { tier: 4, pendingGates: [], reason: cs.tierLabel ?? 'Blocked' };
 
-  // ── D alignment ──────────────────────────────────
+  // D alignment
   const dAligned = isBull ? dXs >= 1 : dXs <= -1;
 
-  // ── Context conflict ─────────────────────────────
-  const signalDir        = isBull ? 'bullish' : 'bearish';
-  const contextDir       = context?.thesis?.direction ?? null;
+  // Context conflict
+  const signalDir         = isBull ? 'bullish' : 'bearish';
+  const contextDir        = context?.thesis?.direction ?? null;
   const contextConviction = context?.thesis?.conviction ?? null;
   const isContextConflict = contextDir !== null
     && contextDir !== 'neutral'
@@ -78,39 +75,32 @@ function getReadinessTier(ticker, sig, spot, allSignals, fundamentals, context) 
     || conviction === 'low'
     || isContextConflict;
 
-  // ── Signal maturity ──────────────────────────────
+  // Signal maturity
   const isTooMature    = wSince > 40;
   const isMaturingFast = wSince > 25 && rangePos !== null
     && ((isBull && rangePos > 0.65) || (!isBull && rangePos < 0.35));
-
   if (isTooMature || isMaturingFast)
-    return { tier: 3, pendingGates: [], reason: `Signal mature (${wSince} candles) — wait for reset` };
+    return { tier: 3, pendingGates: [], reason: `Signal mature (${wSince} candles)` };
 
-  // ── MARGINAL conditions ──────────────────────────
+  // Marginal
   if (!dAligned)
     return { tier: 3, pendingGates: ['D signal not confirmed'], reason: 'W only — wait for D' };
-
   if (isConflicted && conviction === 'low') {
     const gate = isContextConflict ? 'Context conflict (low conviction)' : 'Context conflict';
     return { tier: 3, pendingGates: [gate], reason: 'Context conflicts with signal' };
   }
-
   if (cs.tier === 'WEAK' || cs.tier === 'AVOID')
     return { tier: 3, pendingGates: [], reason: 'Score too low' };
 
-  // ── W+D aligned — check entry gates ─────────────
-  const timingOk = isBull
-    ? (h4xs >= 1 || h1xs >= 1)
-    : (h4xs <= -1 || h1xs <= -1);
-
-  const macdOk = isBull
+  // Entry gates
+  const timingOk = isBull ? (h4xs >= 1 || h1xs >= 1) : (h4xs <= -1 || h1xs <= -1);
+  const macdOk   = isBull
     ? (h4MacdDir === 'bull' || h4MacdCross === 'bull' || dMacdDir === 'bull')
     : (h4MacdDir === 'bear' || h4MacdCross === 'bear' || dMacdDir === 'bear');
 
   if (isConflicted) {
     const conflictLabel = isContextConflict && contextConviction === 'low'
-      ? 'Context conflict (low conviction)'
-      : 'Context conflict — review thesis';
+      ? 'Context conflict (low conviction)' : 'Context conflict — review thesis';
     const pending = [conflictLabel];
     if (!timingOk) pending.push('4H/1H timing');
     if (!macdOk)   pending.push('MACD alignment');
@@ -131,10 +121,8 @@ function getReadinessTier(ticker, sig, spot, allSignals, fundamentals, context) 
 
   if (pendingGates.length === 0)
     return { tier: 0, pendingGates: [], reason: 'All gates clear' };
-
   if (pendingGates.length === 1)
     return { tier: 1, pendingGates, reason: `Waiting: ${pendingGates[0]}` };
-
   if (cs.tier === 'PRIME' || cs.score >= 70)
     return { tier: 1, pendingGates, reason: 'Strong setup — waiting for timing' };
 
@@ -151,14 +139,50 @@ function tfEmoji(sig, tf) {
   return '➡️';
 }
 
-async function fetchSignals() {
-  const res = await fetch(GSCRIPT_URL, {
+// Compute full signal object from multi-timeframe candle history
+function computeSig(history) {
+  if (!history) return null;
+  const TFS = [
+    { key: 'W',  field: '1wk' },
+    { key: 'D',  field: '1d'  },
+    { key: '4H', field: '4h'  },
+    { key: '1H', field: '1h'  },
+  ];
+  const computed = {};
+  for (const tf of TFS) {
+    const raw = history[tf.field] ?? history[tf.key] ?? [];
+    if (!Array.isArray(raw) || raw.length < 55) continue;
+    // Candle format: [timestamp, high, low, close]
+    const candles = raw.map(c => ({ h: c[1], l: c[2], c: c[3] }));
+    const result  = calcComposite(candles);
+    if (result) computed[tf.key] = result;
+  }
+  if (!computed.W && !computed.D) return null;
+  computed._entry    = calcEntry(computed);
+  computed._strategy = calcStrategy(computed._entry, computed);
+  return computed;
+}
+
+async function fetchWatchlist() {
+  const res = await fetch(`${GSCRIPT_URL}`, {
     headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Vercel)' },
     redirect: 'follow',
   });
   if (!res.ok) throw new Error(`GScript ${res.status}`);
   const json = await res.json();
-  return json.signals ?? {};
+  // Get tickers from watchlist + active positions
+  const wl  = (json.watchlist ?? []).map(w => w.ticker ?? w).filter(Boolean);
+  const pos = (json.rows ?? json.data ?? []).map(r => r.Ticker ?? r.ticker).filter(Boolean);
+  return [...new Set([...wl, ...pos])];
+}
+
+async function fetchHistory(tickers) {
+  try {
+    const r = await fetch(`${API_BASE}?action=history&tickers=${tickers.join(',')}`);
+    if (!r.ok) return {};
+    const data = await r.json();
+    return data.history ?? data ?? {};
+  } catch { return {}; }
 }
 
 async function fetchBulk(action, tickers) {
@@ -168,23 +192,17 @@ async function fetchBulk(action, tickers) {
     const data = await r.json();
     const map = data[action] ?? data;
     return (typeof map === 'object' && !Array.isArray(map)) ? map : {};
-  } catch {
-    return {};
-  }
+  } catch { return {}; }
 }
 
 async function fetchPrice(ticker) {
   const key = process.env.VITE_FINNHUB_KEY;
   if (!key) return null;
   try {
-    const r = await fetch(
-      `https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${key}`
-    );
+    const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${key}`);
     const j = await r.json();
     return j.c > 0 ? j.c : null;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 async function sendTelegram(message) {
@@ -203,25 +221,39 @@ async function sendTelegram(message) {
 
 export default async function handler(req, res) {
   try {
-    const signals    = await fetchSignals();
-    const tickers    = Object.keys(signals);
+    // 1. Get ticker list from GScript
+    const tickers = await fetchWatchlist();
+    if (!tickers.length) {
+      return res.status(200).json({ ok: true, alerts: [], note: 'No tickers' });
+    }
 
-    // Bulk fetch fundamentals and context in parallel
-    const [fundamentalsMap, contextMap] = await Promise.all([
+    // 2. Fetch candle history, fundamentals, context in parallel
+    const [history, fundamentalsMap, contextMap] = await Promise.all([
+      fetchHistory(tickers),
       fetchBulk('fundamentals', tickers),
       fetchBulk('context',      tickers),
     ]);
 
+    // 3. Compute signals for all tickers
+    const allSigs = {};
+    for (const ticker of tickers) {
+      const sig = computeSig(history[ticker]);
+      if (sig) allSigs[ticker] = sig;
+    }
+
     const tradeNow = [];
     const watching = [];
 
+    // 4. Fetch prices sequentially and evaluate each ticker
     for (const ticker of tickers) {
-      const sig  = signals[ticker];
+      const sig = allSigs[ticker];
+      if (!sig) continue;
+
       const spot = await fetchPrice(ticker);
       await new Promise(r => setTimeout(r, 250));
 
       const result = getReadinessTier(
-        ticker, sig, spot, signals,
+        ticker, sig, spot, allSigs,
         fundamentalsMap[ticker] ?? null,
         contextMap[ticker]      ?? null
       );
@@ -231,23 +263,22 @@ export default async function handler(req, res) {
         if (_alerted.has(key)) continue;
 
         const cs     = calcCompositeScore({ sig, fundamentals: fundamentalsMap[ticker] ?? null, spot, marketSig: null });
-        const isBull = (sig?._entry?.dir ?? '') === 'long';
+        const isBull = (sig._entry?.dir ?? '') === 'long';
         const label  = isBull ? 'Sell Put' : 'Sell Call';
         const score  = cs?.score ?? '?';
-        const wEmoji = tfEmoji(sig, 'W');
-        const dEmoji = tfEmoji(sig, 'D');
 
-        tradeNow.push(`⚡ TRADE NOW: ${ticker} — ${label} · score ${score} · W${wEmoji} D${dEmoji}`);
+        tradeNow.push(`⚡ TRADE NOW: ${ticker} — ${label} · score ${score} · W${tfEmoji(sig, 'W')} D${tfEmoji(sig, 'D')}`);
         _alerted.add(key);
 
       } else if (result.tier === 1) {
         const cs     = calcCompositeScore({ sig, fundamentals: fundamentalsMap[ticker] ?? null, spot, marketSig: null });
-        const isBull = (sig?._entry?.dir ?? '') === 'long';
+        const isBull = (sig._entry?.dir ?? '') === 'long';
         const label  = isBull ? 'Sell Put' : 'Sell Call';
         const score  = cs?.score ?? '?';
         const gates  = result.pendingGates.length > 0
           ? result.pendingGates.join(', ')
           : result.reason;
+
         watching.push(`👀 WATCH: ${ticker} — ${label} · score ${score} · waiting: ${gates}`);
       }
     }
@@ -261,7 +292,7 @@ export default async function handler(req, res) {
     }
 
     const alerts = [...tradeNow, ...watching];
-    return res.status(200).json({ ok: true, alerts });
+    return res.status(200).json({ ok: true, alerts, tickers: tickers.length, signals: Object.keys(allSigs).length });
   } catch (err) {
     console.error('alert-signals error:', err);
     return res.status(500).json({ error: err.message });
