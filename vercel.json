@@ -5,8 +5,12 @@
       "destination": "/api/exec"
     },
     {
-      "source": "/api/alert",
-      "destination": "/api/alert"
+      "source": "/api/alert-breach",
+      "destination": "/api/alert-breach"
+    },
+    {
+      "source": "/api/alert-signals",
+      "destination": "/api/alert-signals"
     },
     {
       "source": "/(.*)",
@@ -29,7 +33,11 @@
       "memory": 256,
       "maxDuration": 30
     },
-    "api/alert.js": {
+    "api/alert-breach.js": {
+      "memory": 256,
+      "maxDuration": 60
+    },
+    "api/alert-signals.js": {
       "memory": 256,
       "maxDuration": 60
     }

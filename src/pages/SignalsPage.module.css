@@ -722,9 +722,12 @@
   overflow: hidden;
   position: absolute;
   top: 0; left: 0;
+  transition: width 0.3s ease;
 }
 .leapHarvestBar {
-  height: 5px; border-radius: 999px; transition: width .3s;
+  height: 100%;
+  border-radius: 4px;
+  transition: width .3s;
 }
 .leapHarvestPct {
   font-family: var(--mono); font-size: 10px;

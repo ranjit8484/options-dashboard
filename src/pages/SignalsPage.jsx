@@ -492,10 +492,9 @@ export function LeapHarvestPanel({ groups, prices, closed, signals, onOpenResear
               || tt.includes('pmcc') || tt.includes('pmcp')
               || tt.includes('covered');
             if (!isHedge) return;
-            // Must be a credit trade
-            const credit = parseFloat(c.credit || 0);
-            if (credit <= 0) return;
-            harvested += credit * 100;
+            const realized = parseFloat(c.realizedPnl || 0);
+            if (realized <= 0) return;
+            harvested += realized;
           });
         }
 
@@ -754,7 +753,7 @@ export function LeapHarvestPanel({ groups, prices, closed, signals, onOpenResear
                       <div className={styles.leapHarvestMid}>
                         <div className={styles.leapHarvestProgressWrap}>
                           <div className={styles.leapHarvestProgressBg}
-                            style={{width:`${item.scaledPct}%`, minWidth:'4px'}}>
+                            style={{width:`${item.scaledPct}%`, minWidth:'4px', height:'100%'}}>
                             <div className={styles.leapHarvestBar}
                               style={{
                                 width: item.leapCost > 0
