@@ -83,26 +83,7 @@ export function clearPriceCache() { Object.keys(_priceCache).forEach(k => delete
 
 const API = "/api/exec";
 
-// Fallback static data so the dashboard works even without the GScript
-const FALLBACK = [
-  { Ticker:"LULU","Call/Put":"CALL","Sell Expiry":"5/29/2026","Sell Strike":130,"Buy Expiry":"5/29/2026","Buy Strike":0,Qty:1,"Credit / Debit":3.05,Platform:"RH" },
-  { Ticker:"LULU","Call/Put":"CALL","Sell Expiry":"1/15/2027","Sell Strike":0,"Buy Expiry":"1/15/2027","Buy Strike":130,Qty:1,"Credit / Debit":-20.72,Platform:"RH" },
-  { Ticker:"MU","Call/Put":"PUT","Sell Expiry":"7/17/2026","Sell Strike":0,"Buy Expiry":"7/17/2026","Buy Strike":800,Qty:1,"Credit / Debit":-138.68,Platform:"RH" },
-  { Ticker:"MU","Call/Put":"PUT","Sell Expiry":"7/17/2026","Sell Strike":0,"Buy Expiry":"7/17/2026","Buy Strike":800,Qty:1,"Credit / Debit":-128.08,Platform:"FID" },
-  { Ticker:"W","Call/Put":"CALL","Sell Expiry":"12/18/2026","Sell Strike":0,"Buy Expiry":"12/18/2026","Buy Strike":65,Qty:1,"Credit / Debit":-19.10,Platform:"RH" },
-  { Ticker:"W","Call/Put":"CALL","Sell Expiry":"1/15/2027","Sell Strike":0,"Buy Expiry":"1/15/2027","Buy Strike":60,Qty:3,"Credit / Debit":-16.14,Platform:"RH" },
-  { Ticker:"AAPL","Call/Put":"PUT","Sell Expiry":"12/18/2026","Sell Strike":0,"Buy Expiry":"12/18/2026","Buy Strike":330,Qty:1,"Credit / Debit":-39.00,Platform:"RH" },
-  { Ticker:"HD","Call/Put":"CALL","Sell Expiry":"1/15/2027","Sell Strike":0,"Buy Expiry":"1/15/2027","Buy Strike":300,Qty:1,"Credit / Debit":-26.50,Platform:"RH" },
-  { Ticker:"HD","Call/Put":"CALL","Sell Expiry":"1/15/2027","Sell Strike":0,"Buy Expiry":"1/15/2027","Buy Strike":300,Qty:2,"Credit / Debit":-38.51,Platform:"FID" },
-  { Ticker:"LRCX","Call/Put":"CALL","Sell Expiry":"5/29/2026","Sell Strike":265,"Buy Expiry":"5/29/2026","Buy Strike":0,Qty:2,"Credit / Debit":28.00,Platform:"FID" },
-  { Ticker:"SNDK","Call/Put":"CALL","Sell Expiry":"6/5/2026","Sell Strike":1550,"Buy Expiry":"6/5/2026","Buy Strike":0,Qty:1,"Credit / Debit":91.05,Platform:"FID" },
-  { Ticker:"SNDK","Call/Put":"CALL","Sell Expiry":"6/12/2026","Sell Strike":1600,"Buy Expiry":"6/12/2026","Buy Strike":0,Qty:1,"Credit / Debit":133.95,Platform:"FID" },
-  { Ticker:"CAT","Call/Put":"PUT","Sell Expiry":"9/18/2026","Sell Strike":0,"Buy Expiry":"9/18/2026","Buy Strike":900,Qty:1,"Credit / Debit":-101.94,Platform:"FID" },
-  { Ticker:"NVDA","Call/Put":"PUT","Sell Expiry":"9/18/2026","Sell Strike":0,"Buy Expiry":"9/18/2026","Buy Strike":250,Qty:1,"Credit / Debit":-40.00,Platform:"FID" },
-  { Ticker:"QQQ","Call/Put":"PUT","Sell Expiry":"12/18/2026","Sell Strike":0,"Buy Expiry":"12/18/2026","Buy Strike":780,Qty:1,"Credit / Debit":-85.00,Platform:"FID" },
-  { Ticker:"TGT","Call/Put":"PUT","Sell Expiry":"1/15/2027","Sell Strike":0,"Buy Expiry":"1/15/2027","Buy Strike":150,Qty:1,"Credit / Debit":-35.00,Platform:"FID" },
-  { Ticker:"NFLX","Call/Put":"CALL","Sell Expiry":"1/15/2027","Sell Strike":0,"Buy Expiry":"1/15/2027","Buy Strike":80,Qty:2,"Credit / Debit":-16.00,Platform:"FID" },
-];
+const FALLBACK = [];
 
 const BASE_PRICES = {
   LRCX:335.49, SNDK:1635.94, LULU:127.79, MU:915.69,
@@ -166,17 +147,17 @@ export function usePositions() {
       setGroups(parsed);
       setUsingFallback(false);
     } catch (err) {
-      console.warn("GScript fetch failed, using fallback data:", err.message);
-      parsed = parseRows(FALLBACK);
-      setGroups(parsed);
-      setUsingFallback(true);
-      setError(err.message);
+      console.warn("GScript fetch failed:", err.message);
+      parsed = [];
+      setGroups([]);
+      setUsingFallback(false);
+      setError("Unable to load positions — check connection");
     } finally {
       setLoading(false);
       setLastUpdated(new Date());
     }
     // Auto-fetch live prices after positions load
-    const tickers = parsed.map(g => g.t).slice(0, 8);
+    const tickers = (parsed ?? []).map(g => g.t).slice(0, 8);
     refreshPrices(tickers);
   }, [refreshPrices]);
 
