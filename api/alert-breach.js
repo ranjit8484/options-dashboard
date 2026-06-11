@@ -58,6 +58,7 @@ async function sendTelegram(message) {
 
 export default async function handler(req, res) {
   try {
+    _alerted.clear();
     const groups = await fetchPositions();
     const prices = await fetchPrices(groups.map(g => g.t));
 
