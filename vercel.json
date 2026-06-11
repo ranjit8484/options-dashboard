@@ -5,6 +5,10 @@
       "destination": "/api/exec"
     },
     {
+      "source": "/api/alert",
+      "destination": "/api/alert"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
@@ -24,6 +28,16 @@
     "api/exec.js": {
       "memory": 256,
       "maxDuration": 30
+    },
+    "api/alert.js": {
+      "memory": 256,
+      "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/alert",
+      "schedule": "0 14-21 * * 1-5"
+    }
+  ]
 }
