@@ -16,9 +16,11 @@ const CONV_ORDER = { full:0, high:1, medium:2, low:3, none:4, exit:5 };
 
 // ── Readiness tier for E19 signal ranking ────────────
 // Returns 0 (best) to 4 (worst) for sorting
+// ── Readiness tier ────────────────────────────────────
+// Returns { tier: 0-4, pendingGates: string[], reason: string }
 function getReadinessTier(row, fundamentals, spot, ticker, signals) {
   const { sig } = row;
-  if (!sig) return 4;
+  if (!sig) return { tier: 4, pendingGates: [], reason: 'No signal' };
 
   const cs = calcCompositeScore({
     sig,
@@ -27,76 +29,124 @@ function getReadinessTier(row, fundamentals, spot, ticker, signals) {
     marketSig: ticker && ticker !== 'QQQ' ? (signals?.['QQQ'] ?? null) : null
   });
 
-  if (!cs) return 4;
+  if (!cs) return { tier: 4, pendingGates: [], reason: 'No score' };
 
-  const thesis = sig?._strategy?.thesis ?? '';
-  const conviction = sig?._strategy?.conviction ?? 'none';
-  const isConflicted = thesis.toLowerCase().includes('conflict')
-    || thesis.toLowerCase().includes('sideways')
-    || thesis.toLowerCase().includes('watch')
-    || conviction === 'low'
-    || conviction === 'none';
+  const conviction  = sig?._strategy?.conviction ?? 'none';
+  const thesis      = sig?._strategy?.thesis ?? '';
+  const isBull      = (sig?._entry?.dir ?? '') === 'long';
+  const wSince      = sig?.W?.since ?? 0;
+  const dXs         = sig?.D?.xs ?? 0;
+  const wXs         = sig?.W?.xs ?? 0;
+  const rangePos    = cs.rangePos ?? null;
 
-  // Counter-trend: mature BLOCK signal at range extreme
-  const rangePos = cs.rangePos ?? null;
-  const isBull = (sig?._entry?.dir ?? '') === 'long';
-  const wSince = sig?.W?.since ?? 0;
-  const isCounterTrend = cs.tier === 'BLOCK'
-    && rangePos !== null
-    && wSince >= 10
-    && (
-      (isBull  && rangePos > 0.80)
-      || (!isBull && rangePos < 0.20)
-    );
+  const h4          = sig?.['4H'] ?? {};
+  const h1          = sig?.['1H'] ?? {};
+  const h4xs        = h4.xs ?? 0;
+  const h1xs        = h1.xs ?? 0;
+  const h4MacdDir   = h4.macdDir ?? '';
+  const h4MacdCross = h4.macdCross ?? null;
+  const dMacdDir    = sig?.D?.macdDir ?? '';
 
-  if (isCounterTrend) return 2;
+  // ── Hard blocks — NO TRADE ──────────────────────
+  const wAligned = isBull ? wXs >= 1 : wXs <= -1;
+  if (!wAligned) return { tier: 4, pendingGates: [], reason: 'No W signal' };
 
-  // Only PRIME and GOOD are eligible for Trade Now / Watch
-  // MARGINAL stays MARGINAL regardless of gates
-  if (cs.tier !== 'PRIME' && cs.tier !== 'GOOD') {
-    if (cs.tier === 'MARGINAL' && !isConflicted) return 3;
-    return 4;
+  if (conviction === 'none' || conviction === 'exit')
+    return { tier: 4, pendingGates: [], reason: 'No conviction' };
+
+  // ── Counter-trend — exhausted move at range extreme ──
+  const isRangeBlock = cs.tier === 'BLOCK' && rangePos !== null
+    && ((isBull && rangePos > 0.82) || (!isBull && rangePos < 0.18));
+  const isMature = wSince >= 10;
+
+  if (isRangeBlock && isMature) {
+    return { tier: 2, pendingGates: [], reason: 'Exhausted — counter-trend probe' };
   }
 
-  // Conflicted PRIME/GOOD → MARGINAL
-  if (isConflicted) return 3;
+  if (cs.tier === 'BLOCK') {
+    return { tier: 4, pendingGates: [], reason: cs.tierLabel ?? 'Blocked' };
+  }
 
-  // Check entry gates using same fields as getEntryTriggers
-  // macdHist not available — use macdDir instead
-  const h4 = sig?.['4H'] ?? {};
-  const h1 = sig?.['1H'] ?? {};
-  const h4xs      = h4.xs ?? 0;
-  const h1xs      = h1.xs ?? 0;
-  const h4MacdDir = h4.macdDir ?? '';
-  const h4MacdCross = h4.macdCross ?? null;
+  // ── Check D alignment ───────────────────────────
+  const dAligned = isBull ? dXs >= 1 : dXs <= -1;
 
-  // Gate 3: 4H or 1H timing confirmed
+  // ── Context conflict check ──────────────────────
+  const isConflicted = thesis.toLowerCase().includes('conflict')
+    || thesis.toLowerCase().includes('sideways')
+    || conviction === 'low';
+
+  // ── Signal maturity ─────────────────────────────
+  const isTooMature = wSince > 40;
+  const isMaturingFast = wSince > 25 && rangePos !== null
+    && ((isBull && rangePos > 0.65) || (!isBull && rangePos < 0.35));
+
+  if (isTooMature || isMaturingFast) {
+    return { tier: 3, pendingGates: [], reason: `Signal mature (${wSince} candles) — wait for reset` };
+  }
+
+  // ── MARGINAL conditions ─────────────────────────
+  if (!dAligned) {
+    return { tier: 3, pendingGates: ['D signal not confirmed'], reason: 'W only — wait for D' };
+  }
+
+  if (isConflicted && conviction === 'low') {
+    return { tier: 3, pendingGates: ['Context conflict'], reason: 'Context conflicts with signal' };
+  }
+
+  if (cs.tier === 'WEAK' || cs.tier === 'AVOID') {
+    return { tier: 3, pendingGates: [], reason: 'Score too low' };
+  }
+
+  // ── Now W+D aligned, PRIME/GOOD/MARGINAL score ──
   const timingOk = isBull
     ? (h4xs >= 1 || h1xs >= 1)
     : (h4xs <= -1 || h1xs <= -1);
 
-  // Gate 4: MACD supporting
-  // Use macdDir or fresh cross as proxy
   const macdOk = isBull
-    ? (h4MacdDir === 'bull' || h4MacdCross === 'bull')
-    : (h4MacdDir === 'bear' || h4MacdCross === 'bear');
+    ? (h4MacdDir === 'bull' || h4MacdCross === 'bull' || dMacdDir === 'bull')
+    : (h4MacdDir === 'bear' || h4MacdCross === 'bear' || dMacdDir === 'bear');
 
-  const gatesReady = timingOk && macdOk;
-  const almostReady = timingOk || macdOk;
+  if (isConflicted) {
+    const pending = ['Context conflict — review thesis'];
+    if (!timingOk) pending.push('4H/1H timing');
+    if (!macdOk)   pending.push('MACD alignment');
+    return { tier: 1, pendingGates: pending, reason: 'Context conflict — watch only' };
+  }
 
-  // All gates clear → Trade Now
-  // One gate pending → Watch
-  // No gates → still Watch (valid setup, just timing)
-  return gatesReady ? 0 : 1;
+  const isExtended = rangePos !== null
+    && ((isBull && rangePos > 0.65) || (!isBull && rangePos < 0.35));
+  if (isExtended && cs.tier !== 'PRIME') {
+    const pending = ['Range extended — wait for pullback'];
+    if (!timingOk) pending.push('4H/1H timing');
+    return { tier: 1, pendingGates: pending, reason: 'Extended range — reduce size' };
+  }
+
+  const pendingGates = [];
+  if (!timingOk) pendingGates.push('4H/1H timing');
+  if (!macdOk)   pendingGates.push('MACD alignment');
+
+  if (pendingGates.length === 0) {
+    return { tier: 0, pendingGates: [], reason: 'All gates clear' };
+  }
+
+  if (pendingGates.length === 1) {
+    return { tier: 1, pendingGates, reason: `Waiting: ${pendingGates[0]}` };
+  }
+
+  if (cs.tier === 'PRIME' || cs.score >= 70) {
+    return { tier: 1, pendingGates, reason: 'Strong setup — waiting for timing' };
+  }
+
+  return { tier: 3, pendingGates, reason: 'Gates not ready' };
 }
 
 // Tier labels and styles for display
 const TIER_META = {
-  0: { label: 'Trade now',          cls: 'tierTradeNow',  short: 'TRADE NOW'  },
-  1: { label: 'Watch',              cls: 'tierWatch',     short: 'WATCH'      },
-  2: { label: 'Counter-trend probe',cls: 'tierCounter',   short: 'COUNTER'    },
-  3: { label: 'Marginal',           cls: 'tierMarginal',  short: 'MARGINAL'   },
-  4: { label: 'No trade',           cls: 'tierNone',      short: 'NO TRADE'   },
+  0: { label: 'Trade now',           cls: 'tierTradeNow', short: 'TRADE NOW' },
+  1: { label: 'Watch',               cls: 'tierWatch',    short: 'WATCH'     },
+  2: { label: 'Counter-trend probe', cls: 'tierCounter',  short: 'COUNTER'   },
+  3: { label: 'Marginal',            cls: 'tierMarginal', short: 'MARGINAL'  },
+  4: { label: 'No trade',            cls: 'tierNone',     short: 'NO TRADE'  },
 };
 
 // ── Exit badge helper for active short positions ──────
@@ -950,13 +1000,13 @@ export function SignalsPage({
     let rows = allRows;
     if (bucketFilter !== 'ALL') rows = rows.filter(r => r.bucket === bucketFilter);
     if (showFilter === 'ACTIVE')   rows = rows.filter(r => r.isActive);
-    if (showFilter === 'TRADENOW') rows = rows.filter(r => r.readinessTier === 0);
-    if (showFilter === 'WATCH')    rows = rows.filter(r => r.readinessTier === 1);
-    if (showFilter === 'COUNTER')  rows = rows.filter(r => r.readinessTier === 2);
-    if (showFilter === 'MARGINAL') rows = rows.filter(r => r.readinessTier === 3);
+    if (showFilter === 'TRADENOW') rows = rows.filter(r => r.readinessTier.tier === 0);
+    if (showFilter === 'WATCH')    rows = rows.filter(r => r.readinessTier.tier === 1);
+    if (showFilter === 'COUNTER')  rows = rows.filter(r => r.readinessTier.tier === 2);
+    if (showFilter === 'MARGINAL') rows = rows.filter(r => r.readinessTier.tier === 3);
     return [...rows].sort((a,b) => {
       if (sortBy === 'readiness') {
-        const tierDiff = (a.readinessTier ?? 4) - (b.readinessTier ?? 4);
+        const tierDiff = (a.readinessTier.tier ?? 4) - (b.readinessTier.tier ?? 4);
         if (tierDiff !== 0) return tierDiff;
         return (CONV_ORDER[a.conviction] ?? 9) - (CONV_ORDER[b.conviction] ?? 9);
       }
@@ -1053,10 +1103,10 @@ export function SignalsPage({
             <tbody>
               {tableRows.map((r, idx) => {
                 const prevTier = idx > 0
-                  ? tableRows[idx-1].readinessTier : -1;
+                  ? tableRows[idx-1].readinessTier.tier : -1;
                 const showDivider = sortBy === 'readiness'
-                  && r.readinessTier !== prevTier;
-                const tierMeta = TIER_META[r.readinessTier];
+                  && r.readinessTier.tier !== prevTier;
+                const tierMeta = TIER_META[r.readinessTier.tier];
                 return (
                   <React.Fragment key={r.ticker}>
                     {showDivider && tierMeta && (
@@ -1064,15 +1114,19 @@ export function SignalsPage({
                         <td colSpan={99}
                           className={`${styles.tierDivider}
                             ${styles[tierMeta.cls + 'Div'] ?? ''}
-                            ${r.readinessTier === 2 ? styles.tierCounterDiv : ''}
+                            ${r.readinessTier.tier === 2 ? styles.tierCounterDiv : ''}
                           `}>
                           <span className={styles.tierDividerLabel}>
-                            {r.readinessTier === 0 && '⚡ '}
-                            {r.readinessTier === 1 && '⏳ '}
-                            {r.readinessTier === 2 && '↩ '}
-                            {r.readinessTier === 3 && ''}
+                            {r.readinessTier.tier === 0 && '⚡ '}
+                            {r.readinessTier.tier === 1 && '⏳ '}
+                            {r.readinessTier.tier === 2 && '↩ '}
                             {tierMeta.label}
-                            {r.readinessTier === 2 && (
+                            {r.readinessTier.tier === 1 && r.readinessTier.pendingGates?.length > 0 && (
+                              <span className={styles.tierCounterNote}>
+                                · waiting: {r.readinessTier.pendingGates[0]}
+                              </span>
+                            )}
+                            {r.readinessTier.tier === 2 && (
                               <span className={styles.tierCounterNote}>
                                 · half size · opposite direction
                               </span>
@@ -1159,14 +1213,16 @@ function TableRow({
     readinessTier = row.readinessTier;
   }
 
+  const tierNum = readinessTier?.tier ?? readinessTier ?? 4;
+
   const activePos = groups?.find(g => g.t === ticker)?.pos ?? [];
   const fallbackSpot = prices?.[ticker]
     ?? activePos[0]?.k ?? null;
 
-  const tierRowCls = readinessTier === 0 ? styles.rowTradeNow
-    : readinessTier === 1 ? styles.rowWatch
-    : readinessTier === 2 ? styles.rowCounter
-    : readinessTier === 3 ? styles.rowMarginal
+  const tierRowCls = tierNum === 0 ? styles.rowTradeNow
+    : tierNum === 1 ? styles.rowWatch
+    : tierNum === 2 ? styles.rowCounter
+    : tierNum === 3 ? styles.rowMarginal
     : styles.rowNoTrade;
   const rowCls = [
     styles.tableRow,
@@ -1184,10 +1240,10 @@ function TableRow({
       <td>
         {score !== null && score !== undefined ? (
           <span className={`${styles.scoreChip} ${
-            readinessTier === 0 ? styles.scoreChipGreen
-            : readinessTier === 1 ? styles.scoreChipAmber
-            : readinessTier === 2 ? styles.scoreChipPurple
-            : readinessTier === 3 ? styles.scoreChipOrange
+            tierNum === 0 ? styles.scoreChipGreen
+            : tierNum === 1 ? styles.scoreChipAmber
+            : tierNum === 2 ? styles.scoreChipPurple
+            : tierNum === 3 ? styles.scoreChipOrange
             : styles.scoreChipGrey
           }`}>
             {score}
@@ -1227,9 +1283,9 @@ function TableRow({
             </span>
           );
         })()}
-        {readinessTier !== undefined && (
-          <span className={`${styles.tierBadge} ${styles[TIER_META[readinessTier]?.cls]}`}>
-            {TIER_META[readinessTier]?.short}
+        {tierNum !== undefined && (
+          <span className={`${styles.tierBadge} ${styles[TIER_META[tierNum]?.cls]}`}>
+            {TIER_META[tierNum]?.short}
           </span>
         )}
         {sig?._strategy?.description && (
@@ -1239,16 +1295,16 @@ function TableRow({
         )}
       </td>
       <td>
-        {readinessTier === 0 && (
+        {tierNum === 0 && (
           <span className={styles.gateNow}>⚡ Enter</span>
         )}
-        {readinessTier === 1 && (
+        {tierNum === 1 && (
           <span className={styles.gateWait}>⏳ Watch</span>
         )}
-        {readinessTier === 2 && (
+        {tierNum === 2 && (
           <span className={styles.gateCounter}>↩ Probe</span>
         )}
-        {(readinessTier === 3 || readinessTier === 4) && (
+        {(tierNum === 3 || tierNum === 4) && (
           <span className={styles.gateNa}>—</span>
         )}
       </td>

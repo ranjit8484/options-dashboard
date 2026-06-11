@@ -75,7 +75,7 @@ function RecommendedBanner({ conviction, isBull, spot, ticker, params, account, 
 }
 
 // ── Context panel ─────────────────────────────────────────────────
-function ContextPanel({ context }) {
+function ContextPanel({ context, hasContextConflict, signalDir, contextDir, contextConviction }) {
   if (!context) return null;
 
   const alert  = context.alert;
@@ -400,9 +400,19 @@ function FundamentalBackdrop({
         / (range52.high - range52.low)
       ))
     : null;
+  const rangePct = rangePos !== null ? Math.round(rangePos * 100) : null;
 
-  const rangePct = rangePos !== null
-    ? Math.round(rangePos * 100) : null;
+  const range1m = fundamentals.range1m;
+  const rangePos1m = range1m && spot
+    ? Math.max(0, Math.min(1, (spot - range1m.low) / (range1m.high - range1m.low)))
+    : null;
+  const rangePct1m = rangePos1m !== null ? Math.round(rangePos1m * 100) : null;
+
+  const range1w = fundamentals.range1w;
+  const rangePos1w = range1w && spot
+    ? Math.max(0, Math.min(1, (spot - range1w.low) / (range1w.high - range1w.low)))
+    : null;
+  const rangePct1w = rangePos1w !== null ? Math.round(rangePos1w * 100) : null;
 
   const ratingCls = {
     STRONG:   styles.bdStrong,
@@ -425,46 +435,6 @@ function FundamentalBackdrop({
 
   return (
     <div className={styles.bdPanel}>
-
-      {/* 52-week range bar — top */}
-      {range52 && rangePct !== null && (
-        <div className={styles.bdRangeBlock}>
-          <div className={styles.bdRangeLabels}>
-            <span className={styles.bdRangeLow}>
-              ${Math.round(range52.low)
-                .toLocaleString()}
-            </span>
-            <span className={styles.bdRangePct}>
-              {rangePct}% of range
-            </span>
-            <span className={styles.bdRangeHigh}>
-              ${Math.round(range52.high)
-                .toLocaleString()}
-            </span>
-          </div>
-          <div className={styles.bdRangeBar}>
-            <div
-              className={styles.bdRangeFill}
-              style={{ width: `${rangePct}%` }}
-            />
-            <div
-              className={styles.bdRangePointer}
-              style={{ left: `${rangePct}%` }}
-            />
-          </div>
-          <div className={styles.bdRangeNote}>
-            {rangePct >= 80
-              ? 'Near yearly high — limited upside'
-              : rangePct >= 60
-              ? 'Upper half — extended'
-              : rangePct >= 40
-              ? 'Mid range — neutral'
-              : rangePct >= 20
-              ? 'Lower half — potential value'
-              : 'Near yearly low — limited downside'}
-          </div>
-        </div>
-      )}
 
       <div className={styles.bdHeader}>
         <span className={styles.bdTitle}>
@@ -2436,13 +2406,9 @@ export function ResearchCard({
   const { data: fundamentals, loading: fundLoading } = useFundamentals(ticker);
   const { data: context } = useContext(ticker);
 
-  // Detect context vs signal conflicts
+  // Detect context vs signal conflicts (signalDir/hasContextConflict resolved after isBull)
   const contextDir = context?.thesis?.direction ?? null;
   const contextConviction = context?.thesis?.conviction ?? null;
-  const signalDir = isBull ? 'bullish' : 'bearish';
-  const hasContextConflict = contextDir !== null
-    && contextDir !== 'neutral'
-    && contextDir !== signalDir;
 
   // avoidUntil check
   const avoidUntil = context?.tradeGuidance?.avoidUntil
@@ -2484,6 +2450,14 @@ export function ResearchCard({
     });
   }, [sig, fundamentals, spot]);
 
+  // Compact range bars — computed here for the header area
+  const _r52  = fundamentals?.range52;
+  const _r1m  = fundamentals?.range1m;
+  const _r1w  = fundamentals?.range1w;
+  const _rp52 = _r52 && spot ? Math.round(Math.max(0, Math.min(1, (spot - _r52.low) / (_r52.high - _r52.low))) * 100) : null;
+  const _rp1m = _r1m && spot ? Math.round(Math.max(0, Math.min(1, (spot - _r1m.low) / (_r1m.high - _r1m.low))) * 100) : null;
+  const _rp1w = _r1w && spot ? Math.round(Math.max(0, Math.min(1, (spot - _r1w.low) / (_r1w.high - _r1w.low))) * 100) : null;
+
   const entry      = sig._entry;
   const strategy   = sig._strategy;
   const conviction = strategy?.conviction ?? 'medium';
@@ -2492,6 +2466,11 @@ export function ResearchCard({
   const isBull = (entry?.action==='SELL'&&entry?.dir==='put')
     ||(entry?.action==='ENTER'&&entry?.dir==='long')
     ||(entry?.action==='WATCH'&&entry?.dir==='long');
+
+  const signalDir = isBull ? 'bullish' : 'bearish';
+  const hasContextConflict = contextDir !== null
+    && contextDir !== 'neutral'
+    && contextDir !== signalDir;
 
   const hasPositions = activePositions?.length > 0;
   const scoreTier = compositeScore?.tier;
@@ -2611,6 +2590,46 @@ export function ResearchCard({
           </div>
         </div>
 
+        {/* Compact range bars — inline styles only */}
+        {(_rp52 !== null || _rp1m !== null || _rp1w !== null) && (() => {
+          const barColor = (pct) =>
+            pct >= 90 || pct <= 10 ? '#ef4444'
+            : pct >= 75 || pct <= 25 ? '#f59e0b'
+            : '#22c55e';
+          const RangeRow = ({ lbl, pct, lo, hi }) => pct === null ? null : (
+            <div style={{display:'flex',alignItems:'center',gap:'8px',padding:'3px 0'}}>
+              <span style={{fontFamily:'var(--mono)',fontSize:'9px',fontWeight:'700',
+                color:'var(--text3)',letterSpacing:'.04em',width:'22px',flexShrink:0}}>
+                {lbl}
+              </span>
+              <div style={{flex:1,height:'4px',background:'var(--bg3)',
+                borderRadius:'999px',position:'relative',overflow:'visible'}}>
+                <div style={{position:'absolute',inset:0,width:`${pct}%`,
+                  background:barColor(pct),borderRadius:'999px',opacity:0.65}} />
+                <div style={{position:'absolute',top:'50%',left:`${pct}%`,
+                  transform:'translate(-50%,-50%)',width:'7px',height:'7px',
+                  borderRadius:'50%',background:barColor(pct),
+                  border:'1.5px solid var(--bg1)'}} />
+              </div>
+              <span style={{fontFamily:'var(--mono)',fontSize:'9px',color:'var(--text2)',
+                fontWeight:'700',width:'26px',textAlign:'right',flexShrink:0}}>
+                {pct}%
+              </span>
+              <span style={{fontFamily:'var(--mono)',fontSize:'9px',color:'var(--text3)',
+                whiteSpace:'nowrap',flexShrink:0}}>
+                ${Math.round(lo).toLocaleString()}–${Math.round(hi).toLocaleString()}
+              </span>
+            </div>
+          );
+          return (
+            <div style={{padding:'6px 16px 5px',borderBottom:'1px solid var(--border)'}}>
+              <RangeRow lbl="52W" pct={_rp52} lo={_r52?.low} hi={_r52?.high} />
+              <RangeRow lbl="1M"  pct={_rp1m} lo={_r1m?.low} hi={_r1m?.high} />
+              <RangeRow lbl="1W"  pct={_rp1w} lo={_r1w?.low} hi={_r1w?.high} />
+            </div>
+          );
+        })()}
+
         {/* IV override */}
         <div className={styles.ivBar}>
           <IvInput ticker={ticker}
@@ -2634,7 +2653,13 @@ export function ResearchCard({
         <div className={styles.tabBody}>
           {activeTab==='why' && (
             <div className={styles.tabContent}>
-              <ContextPanel context={context} />
+              <ContextPanel
+                context={context}
+                hasContextConflict={hasContextConflict}
+                signalDir={signalDir}
+                contextDir={contextDir}
+                contextConviction={contextConviction}
+              />
               {/* Signal chips row */}
               <div className={styles.sigChipsRow}>
                 {['W','D','4H','1H'].map(tf => {

@@ -91,6 +91,8 @@ async function fetchFundamentals(ticker) {
         count: data.analysts.numAnalysts ?? 0,
       } : null,
       range52: data.range52 ?? null,
+      range1m: data.range1m ?? null,
+      range1w: data.range1w ?? null,
       ts: Date.now(),
     };
   } catch (err) {

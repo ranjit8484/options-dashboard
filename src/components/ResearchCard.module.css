@@ -1652,3 +1652,60 @@
   font-size: 11px;
   color: var(--text3);
 }
+
+/* ── Compact range bars (header area) ───────────────────────────── */
+.compactRanges {
+  padding: 5px 16px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border-bottom: 1px solid var(--border);
+}
+.compactRangeRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.compactRangeLbl {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text3);
+  letter-spacing: .04em;
+  width: 22px;
+  flex-shrink: 0;
+}
+.compactRangeBar {
+  flex: 1;
+  height: 4px;
+  background: var(--bg3);
+  border-radius: 999px;
+  position: relative;
+  overflow: visible;
+}
+.compactRangeFill {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  opacity: 0.5;
+}
+.compactRangePtr {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent2);
+  border: 1.5px solid var(--bg);
+}
+.compactRangePct {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text3);
+  width: 26px;
+  text-align: right;
+  flex-shrink: 0;
+}
