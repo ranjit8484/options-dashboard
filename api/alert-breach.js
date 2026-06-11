@@ -73,28 +73,16 @@ export default async function handler(req, res) {
         if (!strike) continue;
         const plat = pos.plat ? ` [${pos.plat}]` : '';
 
-        // Short breaches: sc (call) or sp (put)
+        // Short breaches: sc (call) or sp (put), excluding misclassified LEAPs
         if (pos.dir === 'sc' || pos.dir === 'sp') {
+          const tt = (pos.tradeType ?? pos.lbl ?? '').toLowerCase();
+          if (tt.includes('leap')) continue;
           const breached = pos.dir === 'sc' ? spot >= strike : spot <= strike;
           if (breached) {
             const key = `breach:${ticker}:${strike}:${pos.dir}`;
             if (!_alerted.has(key)) {
               const type = pos.dir === 'sc' ? `${strike}c` : `${strike}p`;
               lines.push(`🚨 BREACH${plat}: ${ticker} — ${type} breached · price $${spot}`);
-              _alerted.add(key);
-            }
-          }
-        }
-
-        // LEAP at risk: lc (long call) or lp (long put) where price crossed strike
-        if (pos.dir === 'lc' || pos.dir === 'lp') {
-          // Long call at risk if price dropped below strike; long put at risk if price rose above
-          const atRisk = pos.dir === 'lc' ? spot <= strike : spot >= strike;
-          if (atRisk) {
-            const key = `leap:${ticker}:${strike}:${pos.dir}`;
-            if (!_alerted.has(key)) {
-              const type = pos.dir === 'lc' ? `${strike}c` : `${strike}p`;
-              lines.push(`⚠️ LEAP AT RISK${plat}: ${ticker} — ${type} · price $${spot}`);
               _alerted.add(key);
             }
           }
