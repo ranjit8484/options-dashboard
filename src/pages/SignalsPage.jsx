@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   BUCKETS, HARD_AVOID_NAKED,
   getBucket, getConflicts
@@ -928,8 +928,30 @@ export function SignalsPage({
   const [bucketFilter, setBucketFilter] = useState('ALL');
   const [showFilter,   setShowFilter]   = useState('ALL');
   const [sortBy,       setSortBy]       = useState('readiness');
+  const [fundamentalsMap, setFundamentalsMap] = useState({});
 
   const activeTickers = useMemo(() => groups.map(g => g.t), [groups]);
+
+  // Fetch fundamentals for all watchlist tickers once they're available
+  useEffect(() => {
+    if (!watchlist?.length) return;
+    const tickers = [...new Set([
+      ...watchlist.map(w => w.ticker),
+      ...groups.map(g => g.t),
+    ])].filter(Boolean);
+    if (!tickers.length) return;
+    fetch(`/api/exec?action=fundamentals&tickers=${tickers.join(',')}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return;
+        // Response may be { [ticker]: fundamentalsObj } or { fundamentals: { [ticker]: ... } }
+        const map = data.fundamentals ?? data;
+        if (typeof map === 'object' && !Array.isArray(map)) {
+          setFundamentalsMap(map);
+        }
+      })
+      .catch(() => {});
+  }, [watchlist.length, groups.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const p = params ?? loadParams();
 
   // Build full ticker list with computed fields
@@ -954,16 +976,17 @@ export function SignalsPage({
       const isWatch = !isActive && isBlocked && !suppressExit &&
         conviction !== 'none' && conviction !== 'exit';
 
+      const fundamentals = fundamentalsMap[ticker] ?? null;
       const readinessTier = getReadinessTier(
         { sig, ticker },
-        null,
+        fundamentals,
         prices?.[ticker] ?? null,
         ticker,
         signals
       );
       const cs = sig ? calcCompositeScore({
         sig,
-        fundamentals: null,
+        fundamentals,
         spot: prices?.[ticker] ?? null,
         marketSig: ticker !== 'QQQ' ? (signals?.['QQQ'] ?? null) : null
       }) : null;
@@ -979,7 +1002,7 @@ export function SignalsPage({
         phase: cs?.phase ?? null,
       };
     });
-  }, [watchlist, signals, activeTickers, params]);
+  }, [watchlist, signals, activeTickers, params, fundamentalsMap, prices]);
 
   // Opportunities (clean, trade now)
   const opportunities = useMemo(() =>
