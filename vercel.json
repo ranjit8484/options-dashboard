@@ -34,10 +34,5 @@
       "maxDuration": 60
     }
   },
-  "crons": [
-    {
-      "path": "/api/alert",
-      "schedule": "0 14-21 * * 1-5"
-    }
-  ]
+  "crons": []
 }

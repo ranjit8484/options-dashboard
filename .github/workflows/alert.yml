@@ -1,0 +1,13 @@
+name: Hourly Alert
+
+on:
+  schedule:
+    - cron: "0 14-21 * * 1-5"
+  workflow_dispatch:
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger alert
+        run: curl -s https://options-dashboard-taupe.vercel.app/api/alert
