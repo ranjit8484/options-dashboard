@@ -10,6 +10,9 @@ import {
   calcComposite, calcEntry, calcStrategy,
   calcCompositeScore,
 } from '../src/lib/finance.js';
+import {
+  getIVFromCandles, getExpiries, buildRec,
+} from '../src/lib/strikeCalc.js';
 
 const GSCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxPPb7y-mew7vsXBJ2KmRBQWG57rx8nGgyd7CvqiFXJ5HCbhLidrqcD46pUC4m4XLBRsg/exec';
 const API_BASE    = 'https://options-dashboard-taupe.vercel.app/api/exec';
@@ -264,10 +267,59 @@ export default async function handler(req, res) {
 
         const cs     = calcCompositeScore({ sig, fundamentals: fundamentalsMap[ticker] ?? null, spot, marketSig: null });
         const isBull = (sig._entry?.dir ?? '') === 'long';
+        const isCall = !isBull;
         const label  = isBull ? 'Sell Put' : 'Sell Call';
         const score  = cs?.score ?? '?';
 
-        tradeNow.push(`⚡ TRADE NOW: ${ticker} — ${label} · score ${score} · W${tfEmoji(sig, 'W')} D${tfEmoji(sig, 'D')}`);
+        // Compute IV from daily candles if available
+        const dCandles = (history[ticker]?.['1d'] ?? history[ticker]?.D ?? [])
+          .map(c => ({ h: c[1], l: c[2], c: c[3] }));
+        const iv = dCandles.length >= 31
+          ? getIVFromCandles(ticker, dCandles)
+          : null;
+
+        // Strike recommendation
+        const expiries = getExpiries(2, 20);
+        const expiry   = expiries[0] ?? { dte: 30, label: '?' };
+        const rec = spot ? buildRec({
+          spot,
+          ticker,
+          isCall,
+          shortDelta: 0.30,
+          longDelta:  0.15,
+          dte:        expiry.dte,
+          tradeType:  'spread',
+          account:    100000,
+          conviction: 'medium',
+          params:     null,
+          ivOverride: iv,
+        }) : null;
+
+        // Range position for reason line
+        const rangePos  = cs?.rangePos ?? null;
+        const rangePct  = rangePos !== null ? `${Math.round(rangePos * 100)}% of 52wk range` : null;
+        const thesis    = sig._strategy?.thesis ?? '';
+        const reasonStr = [thesis, rangePct].filter(Boolean).join(' · ');
+
+        // Build message lines
+        const line1 = `⚡ TRADE NOW: ${ticker} — ${label} · score ${score}`;
+        const spotStr = spot ? `$${spot.toFixed(2)}` : '—';
+        const ivStr   = iv   ? `IV ${Math.round(iv * 100)}%` : '';
+        const line2   = `💰 ${[spotStr, ivStr, `W${tfEmoji(sig, 'W')} D${tfEmoji(sig, 'D')}`].filter(Boolean).join(' · ')}`;
+
+        let line3 = '';
+        let line4 = '';
+        if (rec) {
+          const strikeDesc = rec.longStrike
+            ? `${isCall ? 'Buy' : 'Sell'} $${rec.shortStrike}${isCall ? 'c' : 'p'} / ${isCall ? 'Sell' : 'Buy'} $${rec.longStrike}${isCall ? 'c' : 'p'}`
+            : `${label} $${rec.shortStrike}${isCall ? 'c' : 'p'}`;
+          line3 = `📍 ${strikeDesc} · ${expiry.label} · ~$${rec.premium}cr · max loss $${rec.maxLoss ?? '—'}`;
+          line4 = `🛡 Buffer ${rec.buffer}% · breakeven $${rec.breakeven}`;
+        }
+        const line5 = reasonStr ? `Reason: ${reasonStr}` : '';
+
+        const lines = [line1, line2, line3, line4, line5].filter(Boolean);
+        tradeNow.push(lines.join('\n'));
         _alerted.add(key);
 
       } else if (result.tier === 1) {
@@ -275,11 +327,12 @@ export default async function handler(req, res) {
         const isBull = (sig._entry?.dir ?? '') === 'long';
         const label  = isBull ? 'Sell Put' : 'Sell Call';
         const score  = cs?.score ?? '?';
+        const spotStr = spot ? `$${spot.toFixed(2)}` : '';
         const gates  = result.pendingGates.length > 0
           ? result.pendingGates.join(', ')
           : result.reason;
 
-        watching.push(`👀 WATCH: ${ticker} — ${label} · score ${score} · waiting: ${gates}`);
+        watching.push(`👀 WATCH: ${ticker} ${spotStr} · score ${score} · waiting: ${gates}`);
       }
     }
 
