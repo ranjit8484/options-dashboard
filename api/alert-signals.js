@@ -281,7 +281,8 @@ export default async function handler(req, res) {
         // Strike recommendation
         const expiries = getExpiries(2, 20);
         const expiry   = expiries[0] ?? { dte: 30, label: '?' };
-        const rec = spot ? buildRec({
+        const tooChapForSpread = spot && spot < 10;
+        const rec = (spot && !tooChapForSpread) ? buildRec({
           spot,
           ticker,
           isCall,
@@ -309,11 +310,16 @@ export default async function handler(req, res) {
 
         let line3 = '';
         let line4 = '';
-        if (rec) {
+        if (tooChapForSpread) {
+          line3 = `📍 Naked put only — stock too cheap for spread`;
+        } else if (!rec) {
+          line3 = `📍 Spread not viable — premium too low · consider naked`;
+        } else {
+          const prem = rec.premium != null && !isNaN(rec.premium) ? `~$${rec.premium}cr` : '—';
           const strikeDesc = rec.longStrike
             ? `${isCall ? 'Buy' : 'Sell'} $${rec.shortStrike}${isCall ? 'c' : 'p'} / ${isCall ? 'Sell' : 'Buy'} $${rec.longStrike}${isCall ? 'c' : 'p'}`
             : `${label} $${rec.shortStrike}${isCall ? 'c' : 'p'}`;
-          line3 = `📍 ${strikeDesc} · ${expiry.label} · ~$${rec.premium}cr · max loss $${rec.maxLoss ?? '—'}`;
+          line3 = `📍 ${strikeDesc} · ${expiry.label} · ${prem} · max loss $${rec.maxLoss ?? '—'}`;
           line4 = `🛡 Buffer ${rec.buffer}% · breakeven $${rec.breakeven}`;
         }
         const line5 = reasonStr ? `Reason: ${reasonStr}` : '';
