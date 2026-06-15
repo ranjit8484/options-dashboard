@@ -210,16 +210,18 @@ async function fetchPrice(ticker) {
 
 async function sendTelegram(message) {
   const token  = process.env.TELEGRAM_SIGNALS_TOKEN;
-  const chatId = process.env.TELEGRAM_SIGNALS_CHAT_ID;
-  if (!token || !chatId) {
+  const chatIds = (process.env.TELEGRAM_SIGNALS_CHAT_ID ?? '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!token || !chatIds.length) {
     console.warn('TELEGRAM_SIGNALS_TOKEN / TELEGRAM_SIGNALS_CHAT_ID not set');
     return;
   }
-  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML' }),
-  });
+  await Promise.all(chatIds.map(chatId =>
+    fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML' }),
+    })
+  ));
 }
 
 export default async function handler(req, res) {
