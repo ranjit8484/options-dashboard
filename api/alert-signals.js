@@ -6,6 +6,7 @@
 //   TELEGRAM_SIGNALS_CHAT_ID
 //   VITE_FINNHUB_KEY
 
+import fs from 'fs';
 import {
   calcComposite, calcEntry, calcStrategy,
   calcCompositeScore,
@@ -14,11 +15,29 @@ import {
   getIVFromCandles, getExpiries, buildRec,
 } from '../src/lib/strikeCalc.js';
 
-const GSCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxPPb7y-mew7vsXBJ2KmRBQWG57rx8nGgyd7CvqiFXJ5HCbhLidrqcD46pUC4m4XLBRsg/exec';
-const API_BASE    = 'https://options-dashboard-taupe.vercel.app/api/exec';
+const GSCRIPT_URL  = 'https://script.google.com/macros/s/AKfycbxPPb7y-mew7vsXBJ2KmRBQWG57rx8nGgyd7CvqiFXJ5HCbhLidrqcD46pUC4m4XLBRsg/exec';
+const API_BASE     = 'https://options-dashboard-taupe.vercel.app/api/exec';
+const DEDUP_FILE   = '/tmp/alerted_today.json';
 
-// Module-level dedup — resets on cold start
-const _alerted = new Set();
+// ── Daily file-based dedup ────────────────────────────────────────
+function todayET() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); // YYYY-MM-DD
+}
+
+function loadDedup() {
+  try {
+    const raw = fs.readFileSync(DEDUP_FILE, 'utf8');
+    const obj = JSON.parse(raw);
+    if (obj.date === todayET()) return new Set(obj.tickers ?? []);
+  } catch {}
+  return new Set();
+}
+
+function saveDedup(set) {
+  try {
+    fs.writeFileSync(DEDUP_FILE, JSON.stringify({ date: todayET(), tickers: [...set] }));
+  } catch {}
+}
 
 // ── Readiness tier (mirrors SignalsPage.jsx getReadinessTier) ──────
 function getReadinessTier(ticker, sig, spot, allSigs, fundamentals, context) {
@@ -246,8 +265,12 @@ export default async function handler(req, res) {
       if (sig) allSigs[ticker] = sig;
     }
 
-    const tradeNow = [];
-    const watching = [];
+    // Load daily dedup state
+    const alerted = loadDedup();
+
+    // Candidate buckets — collect all, sort by score, cap later
+    const tradeNowCandidates = []; // { ticker, score, message }
+    const watchCandidates    = []; // { ticker, score, message }
 
     // 4. Fetch prices sequentially and evaluate each ticker
     for (const ticker of tickers) {
@@ -263,15 +286,17 @@ export default async function handler(req, res) {
         contextMap[ticker]      ?? null
       );
 
-      if (result.tier === 0) {
-        const key = `signal:${ticker}`;
-        if (_alerted.has(key)) continue;
+      const cs     = calcCompositeScore({ sig, fundamentals: fundamentalsMap[ticker] ?? null, spot, marketSig: null });
+      const scoreNum = cs?.score ?? 0;
 
-        const cs     = calcCompositeScore({ sig, fundamentals: fundamentalsMap[ticker] ?? null, spot, marketSig: null });
+      if (result.tier === 0) {
+        // Skip if already alerted today
+        if (alerted.has(ticker)) continue;
+
         const isBull = (sig._entry?.dir ?? '') === 'long';
         const isCall = !isBull;
         const label  = isBull ? 'Sell Put' : 'Sell Call';
-        const score  = cs?.score ?? '?';
+        const score  = scoreNum || '?';
 
         // Compute IV from daily candles if available
         const dCandles = (history[ticker]?.['1d'] ?? history[ticker]?.D ?? [])
@@ -326,34 +351,61 @@ export default async function handler(req, res) {
         }
         const line5 = reasonStr ? `Reason: ${reasonStr}` : '';
 
-        const lines = [line1, line2, line3, line4, line5].filter(Boolean);
-        tradeNow.push(lines.join('\n'));
-        _alerted.add(key);
+        const message = [line1, line2, line3, line4, line5].filter(Boolean).join('\n');
+        tradeNowCandidates.push({ ticker, score: scoreNum, message });
 
       } else if (result.tier === 1) {
-        const cs     = calcCompositeScore({ sig, fundamentals: fundamentalsMap[ticker] ?? null, spot, marketSig: null });
-        const isBull = (sig._entry?.dir ?? '') === 'long';
-        const label  = isBull ? 'Sell Put' : 'Sell Call';
-        const score  = cs?.score ?? '?';
+        const isBull  = (sig._entry?.dir ?? '') === 'long';
+        const label   = isBull ? 'Sell Put' : 'Sell Call';
+        const score   = scoreNum || '?';
         const spotStr = spot ? `$${spot.toFixed(2)}` : '';
-        const gates  = result.pendingGates.length > 0
+        const gates   = result.pendingGates.length > 0
           ? result.pendingGates.join(', ')
           : result.reason;
 
-        watching.push(`👀 WATCH: ${ticker} ${spotStr} · score ${score} · waiting: ${gates}`);
+        watchCandidates.push({
+          ticker,
+          score: scoreNum,
+          message: `👀 WATCH: ${ticker} ${spotStr} · score ${score} · waiting: ${gates}`,
+        });
       }
     }
 
+    // Sort by score descending, cap at 3 each
+    tradeNowCandidates.sort((a, b) => b.score - a.score);
+    watchCandidates.sort((a, b) => b.score - a.score);
+
+    const topTradeNow  = tradeNowCandidates.slice(0, 3);
+    const extraTrade   = tradeNowCandidates.length - topTradeNow.length;
+    const topWatch     = watchCandidates.slice(0, 3);
+    const extraWatch   = watchCandidates.length - topWatch.length;
+
+    // Mark alerted tickers in dedup file
+    for (const { ticker } of topTradeNow) alerted.add(ticker);
+    if (topTradeNow.length > 0) saveDedup(alerted);
+
+    const tradeNowMessages = topTradeNow.map(c => c.message);
+    if (extraTrade > 0) tradeNowMessages.push(`+ ${extraTrade} more signal${extraTrade > 1 ? 's' : ''} available on dashboard`);
+
+    const watchMessages = topWatch.map(c => c.message);
+    if (extraWatch > 0) watchMessages.push(`+ ${extraWatch} more signal${extraWatch > 1 ? 's' : ''} available on dashboard`);
+
     const sections = [];
-    if (tradeNow.length > 0) sections.push(tradeNow.join('\n'));
-    if (watching.length  > 0) sections.push(watching.join('\n'));
+    if (tradeNowMessages.length > 0) sections.push(tradeNowMessages.join('\n\n'));
+    if (watchMessages.length    > 0) sections.push(watchMessages.join('\n'));
 
     if (sections.length > 0) {
       await sendTelegram(sections.join('\n\n'));
     }
 
-    const alerts = [...tradeNow, ...watching];
-    return res.status(200).json({ ok: true, alerts, tickers: tickers.length, signals: Object.keys(allSigs).length });
+    const alerts = [...tradeNowMessages, ...watchMessages];
+    return res.status(200).json({
+      ok: true, alerts,
+      tickers: tickers.length,
+      signals: Object.keys(allSigs).length,
+      tradeNow: topTradeNow.length,
+      watch: topWatch.length,
+    });
   } catch (err) {
     console.error('alert-signals error:', err);
     return res.status(500).json({ error: err.message });
