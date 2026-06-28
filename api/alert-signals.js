@@ -268,9 +268,9 @@ export default async function handler(req, res) {
     // Load daily dedup state
     const alerted = loadDedup();
 
-    // Candidate buckets — collect all, sort by score, cap later
-    const tradeNowCandidates = []; // { ticker, score, message }
-    const watchCandidates    = []; // { ticker, score, message }
+    // Candidate buckets — collect all, sort by score descending
+    const tradeNowCandidates = []; // { ticker, score, block }
+    const watchCandidates    = []; // { ticker, score, line }
 
     // 4. Fetch prices sequentially and evaluate each ticker
     for (const ticker of tickers) {
@@ -286,8 +286,10 @@ export default async function handler(req, res) {
         contextMap[ticker]      ?? null
       );
 
-      const cs     = calcCompositeScore({ sig, fundamentals: fundamentalsMap[ticker] ?? null, spot, marketSig: null });
+      const cs       = calcCompositeScore({ sig, fundamentals: fundamentalsMap[ticker] ?? null, spot, marketSig: null });
       const scoreNum = cs?.score ?? 0;
+      const rangePos = cs?.rangePos ?? null;
+      const rangePct = rangePos !== null ? Math.round(rangePos * 100) : null;
 
       if (result.tier === 0) {
         // Skip if already alerted today
@@ -296,68 +298,72 @@ export default async function handler(req, res) {
         const isBull = (sig._entry?.dir ?? '') === 'long';
         const isCall = !isBull;
         const label  = isBull ? 'Sell Put' : 'Sell Call';
-        const score  = scoreNum || '?';
 
-        // Compute IV from daily candles if available
+        // IV from daily candles
         const dCandles = (history[ticker]?.['1d'] ?? history[ticker]?.D ?? [])
           .map(c => ({ h: c[1], l: c[2], c: c[3] }));
-        const iv = dCandles.length >= 31
-          ? getIVFromCandles(ticker, dCandles)
-          : null;
+        const iv = dCandles.length >= 31 ? getIVFromCandles(ticker, dCandles) : null;
 
         // Strike recommendation
         const expiries = getExpiries(2, 20);
         const expiry   = expiries[0] ?? { dte: 30, label: '?' };
-        const tooChapForSpread = spot && spot < 10;
-        const rec = (spot && !tooChapForSpread) ? buildRec({
-          spot,
-          ticker,
-          isCall,
-          shortDelta: 0.30,
-          longDelta:  0.15,
-          dte:        expiry.dte,
-          tradeType:  'spread',
-          account:    100000,
-          conviction: 'medium',
-          params:     null,
-          ivOverride: iv,
+        const tooCheapForSpread = spot && spot < 10;
+        const rec = (spot && !tooCheapForSpread) ? buildRec({
+          spot, ticker, isCall,
+          shortDelta: 0.30, longDelta: 0.15,
+          dte: expiry.dte, tradeType: 'spread',
+          account: 100000, conviction: 'medium',
+          params: null, ivOverride: iv,
         }) : null;
 
-        // Range position for reason line
-        const rangePos  = cs?.rangePos ?? null;
-        const rangePct  = rangePos !== null ? `${Math.round(rangePos * 100)}% of 52wk range` : null;
-        const thesis    = sig._strategy?.thesis ?? '';
-        const reasonStr = [thesis, rangePct].filter(Boolean).join(' · ');
+        const bufferNum = rec?.buffer != null ? parseFloat(rec.buffer) : null;
 
-        // Build message lines
-        const line1 = `⚡ TRADE NOW: ${ticker} — ${label} · score ${score}`;
-        const spotStr = spot ? `$${spot.toFixed(2)}` : '—';
-        const ivStr   = iv   ? `IV ${Math.round(iv * 100)}%` : '';
-        const line2   = `💰 ${[spotStr, ivStr, `W${tfEmoji(sig, 'W')} D${tfEmoji(sig, 'D')}`].filter(Boolean).join(' · ')}`;
-
-        let line3 = '';
-        let line4 = '';
-        if (tooChapForSpread) {
-          line3 = `📍 Naked put only — stock too cheap for spread`;
-        } else if (!rec) {
-          line3 = `📍 Spread not viable — premium too low · consider naked`;
+        // Context note
+        let contextNote;
+        if (scoreNum >= 70 && rangePct !== null && rangePct >= 15 && rangePct <= 60) {
+          contextNote = '✅ Best setup';
+        } else if (bufferNum !== null && bufferNum < 6) {
+          contextNote = '⚠️ Buffer tight — consider skipping';
+        } else if (rangePct !== null && rangePct > 70) {
+          contextNote = '⚠️ Extended — counter-trend only';
+        } else if (bufferNum !== null && bufferNum >= 25) {
+          contextNote = '✅ Wide buffer — clean entry';
         } else {
-          const prem = rec.premium != null && !isNaN(rec.premium) ? `~$${rec.premium}cr` : '—';
+          contextNote = '✅ Valid setup';
+        }
+
+        // Line 1: ticker · direction · score
+        const l1 = `${ticker} · ${label} · score ${scoreNum || '?'}`;
+
+        // Line 2: price · W · D · range% · IV%
+        const spotStr  = spot ? `$${spot.toFixed(2)}` : '—';
+        const rangeStr = rangePct !== null ? `range ${rangePct}%` : '';
+        const ivStr    = iv ? `IV ${Math.round(iv * 100)}%` : '';
+        const l2parts  = [spotStr, `W${tfEmoji(sig, 'W')}`, `D${tfEmoji(sig, 'D')}`, rangeStr, ivStr].filter(Boolean);
+        const l2 = l2parts.join(' · ');
+
+        // Line 3: strike rec
+        let l3;
+        if (tooCheapForSpread) {
+          l3 = `→ Naked put only — stock too cheap for spread`;
+        } else if (!rec) {
+          l3 = `→ Spread not viable — premium too low · consider naked`;
+        } else {
+          const prem = rec.premium != null && !isNaN(rec.premium) ? `$${rec.premium}cr` : '—';
           const strikeDesc = rec.longStrike
             ? `${isCall ? 'Buy' : 'Sell'} $${rec.shortStrike}${isCall ? 'c' : 'p'} / ${isCall ? 'Sell' : 'Buy'} $${rec.longStrike}${isCall ? 'c' : 'p'}`
             : `${label} $${rec.shortStrike}${isCall ? 'c' : 'p'}`;
-          line3 = `📍 ${strikeDesc} · ${expiry.label} · ${prem} · max loss $${rec.maxLoss ?? '—'}`;
-          line4 = `🛡 Buffer ${rec.buffer}% · breakeven $${rec.breakeven}`;
+          l3 = `→ ${strikeDesc} · ${expiry.label} · ${prem} · max loss $${rec.maxLoss ?? '—'}`;
         }
-        const line5 = reasonStr ? `Reason: ${reasonStr}` : '';
 
-        const message = [line1, line2, line3, line4, line5].filter(Boolean).join('\n');
-        tradeNowCandidates.push({ ticker, score: scoreNum, message });
+        // Line 4: buffer · context note
+        const bufferStr = bufferNum !== null ? `Buffer ${rec.buffer}%` : '';
+        const l4 = [bufferStr, contextNote].filter(Boolean).join(' · ');
+
+        const block = [l1, l2, l3, l4].filter(Boolean).join('\n');
+        tradeNowCandidates.push({ ticker, score: scoreNum, block });
 
       } else if (result.tier === 1) {
-        const isBull  = (sig._entry?.dir ?? '') === 'long';
-        const label   = isBull ? 'Sell Put' : 'Sell Call';
-        const score   = scoreNum || '?';
         const spotStr = spot ? `$${spot.toFixed(2)}` : '';
         const gates   = result.pendingGates.length > 0
           ? result.pendingGates.join(', ')
@@ -366,45 +372,57 @@ export default async function handler(req, res) {
         watchCandidates.push({
           ticker,
           score: scoreNum,
-          message: `👀 WATCH: ${ticker} ${spotStr} · score ${score} · waiting: ${gates}`,
+          line: `👀 ${ticker} ${spotStr} · score ${scoreNum || '?'} · waiting: ${gates}`,
         });
       }
     }
 
-    // Sort by score descending, cap at 3 each
+    // Sort by score descending (show all — no cap)
     tradeNowCandidates.sort((a, b) => b.score - a.score);
     watchCandidates.sort((a, b) => b.score - a.score);
 
-    const topTradeNow  = tradeNowCandidates.slice(0, 3);
-    const extraTrade   = tradeNowCandidates.length - topTradeNow.length;
-    const topWatch     = watchCandidates.slice(0, 3);
-    const extraWatch   = watchCandidates.length - topWatch.length;
-
     // Mark alerted tickers in dedup file
-    for (const { ticker } of topTradeNow) alerted.add(ticker);
-    if (topTradeNow.length > 0) saveDedup(alerted);
+    for (const { ticker } of tradeNowCandidates) alerted.add(ticker);
+    if (tradeNowCandidates.length > 0) saveDedup(alerted);
 
-    const tradeNowMessages = topTradeNow.map(c => c.message);
-    if (extraTrade > 0) tradeNowMessages.push(`+ ${extraTrade} more signal${extraTrade > 1 ? 's' : ''} available on dashboard`);
+    // Build message
+    const now = new Date();
+    const headerTime = now.toLocaleString('en-US', {
+      timeZone: 'America/New_York',
+      month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit',
+      hour12: true,
+    });
+    const header = `⚡ G2 Signals — ${headerTime} ET`;
+    const divider = '━━━━━━━━━━━━━━━━━━━';
 
-    const watchMessages = topWatch.map(c => c.message);
-    if (extraWatch > 0) watchMessages.push(`+ ${extraWatch} more signal${extraWatch > 1 ? 's' : ''} available on dashboard`);
+    const sections = [header];
 
-    const sections = [];
-    if (tradeNowMessages.length > 0) sections.push(tradeNowMessages.join('\n\n'));
-    if (watchMessages.length    > 0) sections.push(watchMessages.join('\n'));
-
-    if (sections.length > 0) {
-      await sendTelegram(sections.join('\n\n'));
+    if (tradeNowCandidates.length > 0) {
+      sections.push(divider);
+      const numbered = tradeNowCandidates.map((c, i) => `${i + 1}. ${c.block}`);
+      sections.push(numbered.join('\n\n'));
     }
 
-    const alerts = [...tradeNowMessages, ...watchMessages];
+    if (watchCandidates.length > 0) {
+      sections.push(divider);
+      sections.push(watchCandidates.map(c => c.line).join('\n'));
+    }
+
+    if (tradeNowCandidates.length > 0 || watchCandidates.length > 0) {
+      await sendTelegram(sections.join('\n'));
+    }
+
+    const alerts = [
+      ...tradeNowCandidates.map(c => c.block),
+      ...watchCandidates.map(c => c.line),
+    ];
     return res.status(200).json({
       ok: true, alerts,
       tickers: tickers.length,
       signals: Object.keys(allSigs).length,
-      tradeNow: topTradeNow.length,
-      watch: topWatch.length,
+      tradeNow: tradeNowCandidates.length,
+      watch: watchCandidates.length,
     });
   } catch (err) {
     console.error('alert-signals error:', err);
