@@ -543,7 +543,7 @@ export function LeapHarvestPanel({ groups, prices, closed, signals, onOpenResear
             const ct = (c.ticker || '').toString().trim().toUpperCase();
             if (ct !== g.t.toUpperCase()) return;
             // Must match platform
-            const cp = (c.platform || '').toUpperCase();
+            const cp = (c.Platform || c.platform || c.plat || '').toUpperCase();
             if (leapPlat && cp && cp !== leapPlat) return;
             // Must be opened after the LEAP
             if (leapOpenDate && c.openDate) {
