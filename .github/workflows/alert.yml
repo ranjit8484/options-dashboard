@@ -4,8 +4,8 @@ on:
   schedule:
     # Breach check: 8:30am ET (13:30 UTC) Mon-Fri
     - cron: "30 13 * * 1-5"
-    # Signal check: every hour 9am-4pm ET (14:00-21:00 UTC) Mon-Fri
-    - cron: "0 14-21 * * 1-5"
+    # Signal check: every hour 9am-4pm ET (14:00-20:00 UTC) Mon-Fri
+    - cron: "0 14-20 * * 1-5"
   workflow_dispatch:
 
 jobs:
@@ -18,7 +18,7 @@ jobs:
 
   signal-alert:
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 14-21 * * 1-5'
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 14-20 * * 1-5'
     steps:
       - name: Trigger signal alert
         run: curl -s https://options-dashboard-taupe.vercel.app/api/alert-signals

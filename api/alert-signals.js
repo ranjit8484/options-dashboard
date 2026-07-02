@@ -1,4 +1,4 @@
-// Signals alert — runs hourly 9am-4pm ET (14:00-21:00 UTC) Mon-Fri via GitHub Actions
+// Signals alert — runs hourly 9am-4pm ET (14:00-20:00 UTC) Mon-Fri via GitHub Actions
 // Computes signals server-side from candle history, then runs tier logic
 //
 // Required Vercel env vars:
@@ -6,7 +6,6 @@
 //   TELEGRAM_SIGNALS_CHAT_ID
 //   VITE_FINNHUB_KEY
 
-import fs from 'fs';
 import {
   calcComposite, calcEntry, calcStrategy,
   calcCompositeScore,
@@ -17,27 +16,28 @@ import {
 
 const GSCRIPT_URL  = 'https://script.google.com/macros/s/AKfycbxPPb7y-mew7vsXBJ2KmRBQWG57rx8nGgyd7CvqiFXJ5HCbhLidrqcD46pUC4m4XLBRsg/exec';
 const API_BASE     = 'https://options-dashboard-taupe.vercel.app/api/exec';
-const DEDUP_FILE   = '/tmp/alerted_today.json';
 
-// ── Daily file-based dedup ────────────────────────────────────────
+// ── ET time helpers ───────────────────────────────────────────────
 function todayET() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); // YYYY-MM-DD
 }
 
-function loadDedup() {
-  try {
-    const raw = fs.readFileSync(DEDUP_FILE, 'utf8');
-    const obj = JSON.parse(raw);
-    if (obj.date === todayET()) return new Set(obj.tickers ?? []);
-  } catch {}
-  return new Set();
+function isMarketHours() {
+  const now = new Date();
+  // ET is UTC-4 (EDT summer)
+  const etOffset = -4 * 60; // minutes
+  const utcMinutes = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const etMinutes  = ((utcMinutes + etOffset) % (24 * 60) + 24 * 60) % (24 * 60);
+  const day = now.getUTCDay(); // 0=Sun, 6=Sat; adjust to ET day
+  const etDayOffset = Math.floor((utcMinutes + etOffset) / (24 * 60));
+  const etDay = ((day + etDayOffset) % 7 + 7) % 7;
+  if (etDay === 0 || etDay === 6) return false; // weekend
+  return etMinutes >= 9 * 60 + 30 && etMinutes < 16 * 60; // 9:30–16:00
 }
 
-function saveDedup(set) {
-  try {
-    fs.writeFileSync(DEDUP_FILE, JSON.stringify({ date: todayET(), tickers: [...set] }));
-  } catch {}
-}
+// ── Module-level dedup (survives warm invocations) ────────────────
+// Keyed by ET date → sorted ticker string of last send
+const lastSendMap = new Map();
 
 // ── Readiness tier (mirrors SignalsPage.jsx getReadinessTier) ──────
 function getReadinessTier(ticker, sig, spot, allSigs, fundamentals, context) {
@@ -245,6 +245,11 @@ async function sendTelegram(message) {
 
 export default async function handler(req, res) {
   try {
+    // Market hours guard: Mon-Fri 9:30am-4:00pm ET only
+    if (!isMarketHours()) {
+      return res.status(200).json({ ok: true, skipped: 'outside market hours' });
+    }
+
     // 1. Get ticker list from GScript
     const tickers = await fetchWatchlist();
     if (!tickers.length) {
@@ -264,9 +269,6 @@ export default async function handler(req, res) {
       const sig = computeSig(history[ticker]);
       if (sig) allSigs[ticker] = sig;
     }
-
-    // Load daily dedup state
-    const alerted = loadDedup();
 
     // Candidate buckets — collect all, sort by score descending
     const tradeNowCandidates = []; // { ticker, score, block }
@@ -292,9 +294,6 @@ export default async function handler(req, res) {
       const rangePct = rangePos !== null ? Math.round(rangePos * 100) : null;
 
       if (result.tier === 0) {
-        // Skip if already alerted today
-        if (alerted.has(ticker)) continue;
-
         const isBull = (sig._entry?.dir ?? '') === 'long';
         const isCall = !isBull;
         const label  = isBull ? 'Sell Put' : 'Sell Call';
@@ -381,9 +380,15 @@ export default async function handler(req, res) {
     tradeNowCandidates.sort((a, b) => b.score - a.score);
     watchCandidates.sort((a, b) => b.score - a.score);
 
-    // Mark alerted tickers in dedup file
-    for (const { ticker } of tradeNowCandidates) alerted.add(ticker);
-    if (tradeNowCandidates.length > 0) saveDedup(alerted);
+    // Module-level dedup: skip if same Trade Now ticker set already sent today
+    const today = todayET();
+    const tickerKey = tradeNowCandidates.map(c => c.ticker).sort().join(',');
+    if (tickerKey && lastSendMap.get(today) === tickerKey) {
+      return res.status(200).json({ ok: true, skipped: 'same signals already sent today' });
+    }
+    if (tickerKey) lastSendMap.set(today, tickerKey);
+    // Clean up old dates from the map
+    for (const k of lastSendMap.keys()) { if (k !== today) lastSendMap.delete(k); }
 
     // Build message
     const now = new Date();
