@@ -131,6 +131,9 @@ export function parseRows(rows) {
     const ticker = row.Ticker?.trim();
     if (!ticker) return;
 
+    const platformRaw = (row.Platform ?? row.platform ?? '').toString().trim().toUpperCase();
+    if (platformRaw !== 'RH' && platformRaw !== 'FID') return;
+
     const credit   = parseFloat(row["Credit / Debit"] ?? row.creditDebit ?? 0);
     const callPut  = (row["Call/Put"] ?? row.callPut ?? "").toUpperCase();
     const platform = (row.Platform ?? row.platform ?? "—").toUpperCase();
