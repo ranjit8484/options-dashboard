@@ -64,6 +64,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState(
     isPublic ? 'signals' : 'active'
   );
+  const [activeSubTab, setActiveSubTab] = useState('manage');
 
   const tickers = useMemo(() => {
     const active = groups.map(g => g.t);
@@ -219,6 +220,54 @@ export default function App() {
     ];
   }, [groups, plat, prices]);
 
+  // ── Sub-tab badge counts ─────────────────────────────────────────
+  const subTabBadges = useMemo(() => {
+    const filteredGroups = plat === 'ALL' ? groups : groups.map(g => ({
+      ...g, pos: g.pos.filter(p => p.plat === plat)
+    })).filter(g => g.pos.length > 0);
+
+    // Manage badge: danger/watch urgency action count
+    let manageBadge = 0;
+    filteredGroups.forEach(g => {
+      const price = prices[g.t] ?? 100;
+      g.pos.forEach(p => {
+        const { status } = calcStatus(p.dir, p.k, p.prem, price);
+        if (status === 'danger') manageBadge++;
+      });
+    });
+
+    // Harvest badge: LEAP positions without an active short hedge
+    let harvestBadge = 0;
+    const platFilter = plat === 'ALL' ? null : plat;
+    filteredGroups.forEach(g => {
+      const leaps = g.pos.filter(p =>
+        (p.dir === 'lc' || p.dir === 'lp') && (p.dte ?? 0) > 0 &&
+        (!platFilter || (p.plat || '').toUpperCase() === platFilter)
+      );
+      const shorts = g.pos.filter(p => (p.dir === 'sc' || p.dir === 'sp') && (p.dte ?? 0) > 0);
+      leaps.forEach((_, idx) => { if (!shorts[idx]) harvestBadge++; });
+    });
+
+    // Collateral badge: tickers above warn threshold
+    const collParams = loadParams();
+    const rhBal  = balances?.rh  || 0;
+    const fidBal = balances?.fid || 0;
+    const totalAccount = plat === 'RH' ? rhBal : plat === 'FID' ? fidBal : rhBal + fidBal;
+    const safeAccount = totalAccount > 0 ? totalAccount : null;
+    let collateralBadge = 0;
+    if (safeAccount) {
+      filteredGroups.forEach(g => {
+        const price = prices[g.t] ?? null;
+        const c = g.pos.reduce((s, p) => s + calcCollateral(p.dir, p.k, p.prem, p.qty, price), 0);
+        const pctOfAccount = Math.round(c / safeAccount * 100);
+        const warnPct = collParams.warnTickerCollPct ?? 20;
+        if (pctOfAccount >= warnPct) collateralBadge++;
+      });
+    }
+
+    return { manageBadge, harvestBadge, collateralBadge };
+  }, [groups, prices, plat, balances]);
+
   // ── Stamps ───────────────────────────────────────────────────────
   const fmtTime = (d) => d
     ? d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) +
@@ -323,16 +372,63 @@ export default function App() {
           {/* ── Summary ── */}
           <SummaryBar stats={stats} />
 
-          {/* ── Action Items ── */}
-          <ActionItems
-            groups={groups}
-            prices={prices}
-            balances={balances}
-            plat={plat}
-          />
-          {!isPublic && groups.some(g =>
-            g.pos.some(p => (p.dir === 'lc' || p.dir === 'lp') && (p.dte ?? 0) > 0)
-          ) && (
+          {/* ── Sub-tab bar ── */}
+          <nav className={styles.subTabNav}>
+            {[
+              { id: 'manage',     label: '⚡ Manage',    badge: subTabBadges.manageBadge },
+              { id: 'harvest',    label: '💰 Harvest',   badge: subTabBadges.harvestBadge },
+              { id: 'collateral', label: '📊 Collateral', badge: subTabBadges.collateralBadge },
+            ].map(t => (
+              <button
+                key={t.id}
+                className={`${styles.subTab} ${activeSubTab === t.id ? styles.subTabActive : ''}`}
+                onClick={() => setActiveSubTab(t.id)}
+              >
+                {t.label}
+                {t.badge > 0 && (
+                  <span className={`${styles.subTabBadge} ${t.id === 'collateral' ? styles.subTabBadgeWarn : styles.subTabBadgeDanger}`}>
+                    {t.badge}
+                  </span>
+                )}
+              </button>
+            ))}
+          </nav>
+
+          {/* ── Manage sub-tab ── */}
+          {activeSubTab === 'manage' && (
+            <>
+              <ActionItems
+                groups={groups}
+                prices={prices}
+                balances={balances}
+                plat={plat}
+              />
+              <SortBar
+                sort={sort} setSort={setSort}
+                tradeType={tradeType} setTradeType={setTradeType}
+                direction={direction} setDirection={setDirection}
+                count={visible.reduce((s, g) => s + (plat === "ALL" ? g.pos : g.pos.filter(p => p.plat === plat)).length, 0)}
+              />
+              <div className={styles.cards}>
+                {visible.map(g => (
+                  <TickerCard
+                    key={g.t}
+                    group={g}
+                    price={getPrice(g.t)}
+                    onPriceChange={setPrice}
+                    filterPlat={plat}
+                    tickerSignals={signals[g.t]}
+                  />
+                ))}
+                {visible.length === 0 && (
+                  <div className={styles.empty}>No positions for this platform.</div>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* ── Harvest sub-tab ── */}
+          {activeSubTab === 'harvest' && !isPublic && (
             <LeapHarvestPanel
               groups={groups}
               prices={prices}
@@ -351,47 +447,25 @@ export default function App() {
             />
           )}
 
-          {/* ── Collateral ── */}
-          <CollateralPanel
-            groups={groups}
-            prices={prices}
-            balances={balances}
-            plat={plat}
-            signals={signals}
-            onOpenResearch={(ticker, sig, positions, fallbackSpot, initialTab) => {
-              setResearchTarget({
-                ticker,
-                sig,
-                activePositions: positions ?? groups.find(g => g.t === ticker)?.pos ?? [],
-                fallbackSpot: fallbackSpot ?? prices?.[ticker] ?? null,
-                initialTab: initialTab ?? 'why',
-              });
-            }}
-          />
-
-          {/* ── Active Positions sort bar ── */}
-          <SortBar
-            sort={sort} setSort={setSort}
-            tradeType={tradeType} setTradeType={setTradeType}
-            direction={direction} setDirection={setDirection}
-            count={visible.reduce((s, g) => s + (plat === "ALL" ? g.pos : g.pos.filter(p => p.plat === plat)).length, 0)}
-          />
-
-          <div className={styles.cards}>
-            {visible.map(g => (
-              <TickerCard
-                key={g.t}
-                group={g}
-                price={getPrice(g.t)}
-                onPriceChange={setPrice}
-                filterPlat={plat}
-                tickerSignals={signals[g.t]}
-              />
-            ))}
-            {visible.length === 0 && (
-              <div className={styles.empty}>No positions for this platform.</div>
-            )}
-          </div>
+          {/* ── Collateral sub-tab ── */}
+          {activeSubTab === 'collateral' && (
+            <CollateralPanel
+              groups={groups}
+              prices={prices}
+              balances={balances}
+              plat={plat}
+              signals={signals}
+              onOpenResearch={(ticker, sig, positions, fallbackSpot, initialTab) => {
+                setResearchTarget({
+                  ticker,
+                  sig,
+                  activePositions: positions ?? groups.find(g => g.t === ticker)?.pos ?? [],
+                  fallbackSpot: fallbackSpot ?? prices?.[ticker] ?? null,
+                  initialTab: initialTab ?? 'why',
+                });
+              }}
+            />
+          )}
         </>
       )}
 
