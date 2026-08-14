@@ -641,7 +641,7 @@ export function LeapHarvestPanel({ groups, prices, closed, signals, onOpenResear
       }
       return 0;
     });
-  }, [groups, prices, closed]);
+  }, [groups, prices, closed, plat]);
 
   const totalCost      = items.reduce((s, i) => s + i.leapCost, 0);
   const totalHarvested = items.reduce((s, i) => s + i.harvested, 0);
