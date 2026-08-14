@@ -286,12 +286,17 @@
   line-height: 1;
 }
 
-.subTabBadgeDanger {
+.subTabBadge_danger {
   background: var(--red);
   color: #fff;
 }
 
-.subTabBadgeWarn {
+.subTabBadge_warn {
   background: var(--amber);
   color: #000;
+}
+
+.subTabBadge_neutral {
+  background: var(--border);
+  color: var(--text2);
 }

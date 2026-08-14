@@ -64,7 +64,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState(
     isPublic ? 'signals' : 'active'
   );
-  const [activeSubTab, setActiveSubTab] = useState('manage');
+  const [activeSubTab, setActiveSubTab] = useState(null); // resolved after badge calc
 
   const tickers = useMemo(() => {
     const active = groups.map(g => g.t);
@@ -226,7 +226,7 @@ export default function App() {
       ...g, pos: g.pos.filter(p => p.plat === plat)
     })).filter(g => g.pos.length > 0);
 
-    // Manage badge: danger/watch urgency action count
+    // Manage badge: danger position count
     let manageBadge = 0;
     filteredGroups.forEach(g => {
       const price = prices[g.t] ?? 100;
@@ -235,6 +235,9 @@ export default function App() {
         if (status === 'danger') manageBadge++;
       });
     });
+
+    // Positions badge: total position groups
+    const positionsBadge = filteredGroups.length;
 
     // Harvest badge: LEAP positions without an active short hedge
     let harvestBadge = 0;
@@ -248,25 +251,12 @@ export default function App() {
       leaps.forEach((_, idx) => { if (!shorts[idx]) harvestBadge++; });
     });
 
-    // Collateral badge: tickers above warn threshold
-    const collParams = loadParams();
-    const rhBal  = balances?.rh  || 0;
-    const fidBal = balances?.fid || 0;
-    const totalAccount = plat === 'RH' ? rhBal : plat === 'FID' ? fidBal : rhBal + fidBal;
-    const safeAccount = totalAccount > 0 ? totalAccount : null;
-    let collateralBadge = 0;
-    if (safeAccount) {
-      filteredGroups.forEach(g => {
-        const price = prices[g.t] ?? null;
-        const c = g.pos.reduce((s, p) => s + calcCollateral(p.dir, p.k, p.prem, p.qty, price), 0);
-        const pctOfAccount = Math.round(c / safeAccount * 100);
-        const warnPct = collParams.warnTickerCollPct ?? 20;
-        if (pctOfAccount >= warnPct) collateralBadge++;
-      });
-    }
-
-    return { manageBadge, harvestBadge, collateralBadge };
+    // Collateral badge: no badge (per spec)
+    return { manageBadge, positionsBadge, harvestBadge };
   }, [groups, prices, plat, balances]);
+
+  // Default sub-tab: 'manage' if any danger alerts, else 'positions'
+  const resolvedSubTab = activeSubTab ?? (subTabBadges.manageBadge > 0 ? 'manage' : 'positions');
 
   // ── Stamps ───────────────────────────────────────────────────────
   const fmtTime = (d) => d
@@ -375,18 +365,19 @@ export default function App() {
           {/* ── Sub-tab bar ── */}
           <nav className={styles.subTabNav}>
             {[
-              { id: 'manage',     label: '⚡ Manage',    badge: subTabBadges.manageBadge },
-              { id: 'harvest',    label: '💰 Harvest',   badge: subTabBadges.harvestBadge },
-              { id: 'collateral', label: '📊 Collateral', badge: subTabBadges.collateralBadge },
+              { id: 'manage',     label: '⚡ Manage',     badge: subTabBadges.manageBadge,    badgeStyle: 'danger' },
+              { id: 'positions',  label: '📋 Positions',  badge: subTabBadges.positionsBadge, badgeStyle: 'neutral' },
+              { id: 'harvest',    label: '💰 Harvest',    badge: subTabBadges.harvestBadge,   badgeStyle: 'danger' },
+              { id: 'collateral', label: '📊 Collateral', badge: 0,                           badgeStyle: 'warn' },
             ].map(t => (
               <button
                 key={t.id}
-                className={`${styles.subTab} ${activeSubTab === t.id ? styles.subTabActive : ''}`}
+                className={`${styles.subTab} ${resolvedSubTab === t.id ? styles.subTabActive : ''}`}
                 onClick={() => setActiveSubTab(t.id)}
               >
                 {t.label}
                 {t.badge > 0 && (
-                  <span className={`${styles.subTabBadge} ${t.id === 'collateral' ? styles.subTabBadgeWarn : styles.subTabBadgeDanger}`}>
+                  <span className={`${styles.subTabBadge} ${styles[`subTabBadge_${t.badgeStyle}`]}`}>
                     {t.badge}
                   </span>
                 )}
@@ -394,15 +385,19 @@ export default function App() {
             ))}
           </nav>
 
-          {/* ── Manage sub-tab ── */}
-          {activeSubTab === 'manage' && (
+          {/* ── Manage sub-tab: trade actions only ── */}
+          {resolvedSubTab === 'manage' && (
+            <ActionItems
+              groups={groups}
+              prices={prices}
+              balances={balances}
+              plat={plat}
+            />
+          )}
+
+          {/* ── Positions sub-tab: sort bar + cards ── */}
+          {resolvedSubTab === 'positions' && (
             <>
-              <ActionItems
-                groups={groups}
-                prices={prices}
-                balances={balances}
-                plat={plat}
-              />
               <SortBar
                 sort={sort} setSort={setSort}
                 tradeType={tradeType} setTradeType={setTradeType}
@@ -428,7 +423,7 @@ export default function App() {
           )}
 
           {/* ── Harvest sub-tab ── */}
-          {activeSubTab === 'harvest' && !isPublic && (
+          {resolvedSubTab === 'harvest' && !isPublic && (
             <LeapHarvestPanel
               groups={groups}
               prices={prices}
@@ -448,7 +443,7 @@ export default function App() {
           )}
 
           {/* ── Collateral sub-tab ── */}
-          {activeSubTab === 'collateral' && (
+          {resolvedSubTab === 'collateral' && (
             <CollateralPanel
               groups={groups}
               prices={prices}
