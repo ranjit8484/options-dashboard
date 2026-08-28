@@ -25,36 +25,36 @@ function TradeManagement({ groups, prices, balances, plat }) {
 
         if (dte <= 3) {
           if (status === 'danger') {
-            list.push({ priority: 0, icon: '🔴', urgency: 'danger',
+            list.push({ priority: 0, icon: '🔴', urgency: 'danger', dte,
               plat: p.plat,
               text: `${g.t} ${p.lbl} expires in ${dte}d — DANGER, `+
                 `${diff > 0 ? `ITM ${f$(Math.abs(diff))}` : `OTM ${f$(Math.abs(diff))}`} past breakeven`,
               action: 'Close or roll TODAY' });
           } else if (isShort && status === 'watch') {
-            list.push({ priority: 1, icon: '🟠', urgency: 'watch',
+            list.push({ priority: 1, icon: '🟠', urgency: 'watch', dte,
               plat: p.plat,
               text: `${g.t} ${p.lbl} expires in ${dte}d — approaching strike`,
               action: 'Decide: close, roll, or let expire' });
           } else if (isShort) {
-            list.push({ priority: 2, icon: '✅', urgency: 'safe',
+            list.push({ priority: 2, icon: '✅', urgency: 'safe', dte,
               plat: p.plat,
               text: `${g.t} ${p.lbl} expires in ${dte}d — OTM, on track`,
               action: 'Let expire or close for remaining credit' });
           }
         } else if (dte <= 7 && isShort) {
           if (status === 'danger') {
-            list.push({ priority: 0, icon: '🔴', urgency: 'danger',
+            list.push({ priority: 0, icon: '🔴', urgency: 'danger', dte,
               plat: p.plat,
               text: `${g.t} ${p.lbl} — ${dte}d left, DANGER`,
               action: 'Roll out now — do not wait' });
           } else if (status === 'watch') {
-            list.push({ priority: 1, icon: '🟠', urgency: 'watch',
+            list.push({ priority: 1, icon: '🟠', urgency: 'watch', dte,
               plat: p.plat,
               text: `${g.t} ${p.lbl} — ${dte}d left, WATCH`,
               action: 'Plan roll by end of week' });
           }
         } else if (status === 'danger' && dte > 7) {
-          list.push({ priority: 1, icon: '⚠️', urgency: 'danger',
+          list.push({ priority: 1, icon: '⚠️', urgency: 'danger', dte,
             plat: p.plat,
             text: `${g.t} ${p.lbl} — DANGER with ${dte}d remaining`,
             action: 'Review and roll strike' });
@@ -62,7 +62,10 @@ function TradeManagement({ groups, prices, balances, plat }) {
       });
     });
 
-    return list.sort((a,b) => a.priority - b.priority);
+    return list.sort((a, b) => {
+      if (a.priority !== b.priority) return a.priority - b.priority;
+      return (a.dte ?? 999) - (b.dte ?? 999);
+    });
   }, [groups, prices, balances, plat]);
 
   const urgentCount = items.filter(i =>
