@@ -2687,6 +2687,47 @@ export function ResearchCard({
                 fundamentals={fundamentals}
                 loading={fundLoading}
               />
+              {fundamentals?.news?.length > 0 && (
+                <div style={{marginTop:'16px'}}>
+                  <div style={{fontSize:'11px',fontWeight:'700',color:'var(--text3)',letterSpacing:'.06em',textTransform:'uppercase',marginBottom:'6px'}}>
+                    📰 Recent News
+                  </div>
+                  {fundamentals.news.map((item, i) => {
+                    const ageMs = item.datetime ? Date.now() - item.datetime * 1000 : null;
+                    const ageStr = ageMs == null ? '' : ageMs < 3600000
+                      ? `${Math.round(ageMs / 60000)}m ago`
+                      : ageMs < 86400000
+                      ? `${Math.round(ageMs / 3600000)}h ago`
+                      : `${Math.round(ageMs / 86400000)}d ago`;
+                    return (
+                      <div key={i}>
+                        {i > 0 && <div style={{borderTop:'1px solid var(--border)',margin:'0'}} />}
+                        <div style={{display:'flex',alignItems:'center',gap:'8px',padding:'5px 0',minHeight:'28px'}}>
+                          {ageStr && (
+                            <span style={{fontSize:'10px',color:'var(--text3)',fontFamily:'var(--mono)',flexShrink:0,minWidth:'44px'}}>
+                              {ageStr}
+                            </span>
+                          )}
+                          {item.source && (
+                            <span style={{fontSize:'10px',color:'var(--accent)',fontFamily:'var(--mono)',flexShrink:0,maxWidth:'72px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                              {item.source}
+                            </span>
+                          )}
+                          <a
+                            href={item.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{fontSize:'11px',color:'var(--text1)',textDecoration:'none',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',lineHeight:'1.3'}}
+                            title={item.headline}
+                          >
+                            {item.headline}
+                          </a>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
           {activeTab==='trade' && (

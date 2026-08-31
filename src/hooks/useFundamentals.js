@@ -93,6 +93,7 @@ async function fetchFundamentals(ticker) {
       range52: data.range52 ?? null,
       range1m: data.range1m ?? null,
       range1w: data.range1w ?? null,
+      news: data.news ?? [],
       ts: Date.now(),
     };
   } catch (err) {
