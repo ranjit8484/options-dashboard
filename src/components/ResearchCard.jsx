@@ -2693,6 +2693,7 @@ export function ResearchCard({
                     📰 Recent News
                   </div>
                   {fundamentals.news.map((item, i) => {
+                    const title = item.headline ?? item.title ?? '';
                     const ageMs = item.datetime ? Date.now() - item.datetime * 1000 : null;
                     const ageStr = ageMs == null ? '' : ageMs < 3600000
                       ? `${Math.round(ageMs / 60000)}m ago`
@@ -2701,27 +2702,28 @@ export function ResearchCard({
                       : `${Math.round(ageMs / 86400000)}d ago`;
                     return (
                       <div key={i}>
-                        {i > 0 && <div style={{borderTop:'1px solid var(--border)',margin:'0'}} />}
-                        <div style={{display:'flex',alignItems:'center',gap:'8px',padding:'5px 0',minHeight:'28px'}}>
-                          {ageStr && (
-                            <span style={{fontSize:'10px',color:'var(--text3)',fontFamily:'var(--mono)',flexShrink:0,minWidth:'44px'}}>
-                              {ageStr}
-                            </span>
-                          )}
+                        {i > 0 && <div style={{borderTop:'1px solid var(--border)'}} />}
+                        <div style={{padding:'6px 0'}}>
+                          <div style={{display:'flex',alignItems:'baseline',gap:'6px',marginBottom:'2px'}}>
+                            {ageStr && (
+                              <span style={{fontSize:'10px',color:'var(--text3)',fontFamily:'var(--mono)',flexShrink:0}}>
+                                {ageStr}
+                              </span>
+                            )}
+                            <a
+                              href={item.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{fontSize:'12px',color:'var(--text1)',textDecoration:'none',lineHeight:'1.35',display:'block'}}
+                            >
+                              {title}
+                            </a>
+                          </div>
                           {item.source && (
-                            <span style={{fontSize:'10px',color:'var(--accent)',fontFamily:'var(--mono)',flexShrink:0,maxWidth:'72px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                            <div style={{fontSize:'10px',color:'var(--text3)',fontFamily:'var(--mono)',paddingLeft: ageStr ? '0' : '0'}}>
                               {item.source}
-                            </span>
+                            </div>
                           )}
-                          <a
-                            href={item.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{fontSize:'11px',color:'var(--text1)',textDecoration:'none',flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',lineHeight:'1.3'}}
-                            title={item.headline}
-                          >
-                            {item.headline}
-                          </a>
                         </div>
                       </div>
                     );
