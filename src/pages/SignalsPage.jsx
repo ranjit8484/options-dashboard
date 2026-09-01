@@ -6,13 +6,26 @@ import {
 import { ResearchCard } from '../components/ResearchCard';
 import { loadParams, tickerCollStatus } from '../hooks/useParams';
 import { calcCollateral, calcComposite, calcEntry, calcStrategy,
-  calcCompositeScore } from '../lib/finance';
-import { getLeapExpiries, getStructure, getSizeWarning } from '../lib/strikeCalc';
+  calcCompositeScore, calcPivots } from '../lib/finance';
+import { getLeapExpiries, getStructure, getSizeWarning, getIV } from '../lib/strikeCalc';
 import styles from './SignalsPage.module.css';
 
 
 // ── Conviction sort order ─────────────────────────────
 const CONV_ORDER = { full:0, high:1, medium:2, low:3, none:4, exit:5 };
+
+// ── Pivot + range extraction from sig candles ─────────
+// sig[tf].candles are {h, l, c} objects (last 60 stored by useSignals)
+// Use second-to-last candle = most recently completed period
+function extractPivotsAndRange(sigTf) {
+  if (!sigTf?.candles || sigTf.candles.length < 2) return { pivots: null, range: null };
+  const candles = sigTf.candles;
+  const completed = candles[candles.length - 2]; // second-to-last = last closed period
+  const current   = candles[candles.length - 1]; // most recent (in-progress)
+  const pivots = calcPivots(completed.h, completed.l, completed.c);
+  const range  = { high: current.h, low: current.l };
+  return { pivots, range };
+}
 
 // ── Readiness tier for E19 signal ranking ────────────
 // Returns 0 (best) to 4 (worst) for sorting
@@ -438,6 +451,18 @@ function TickerSearch({ onResult, prices }) {
       computed._entry    = calcEntry(computed);
       computed._strategy = calcStrategy(computed._entry, computed);
 
+      // Attach candles to sig timeframes for pivot extraction (mirrors useSignals)
+      for (const tf of TIMEFRAMES) {
+        const raw = history[tf.key] ?? [];
+        if (computed[tf.key] && raw.length >= 2) {
+          computed[tf.key].candles = raw.slice(-60).map(c => ({ h: c[1], l: c[2], c: c[3] }));
+        }
+      }
+
+      // Compute pivots and ranges
+      const { pivots: dailyPivots,  range: dayRange  } = extractPivotsAndRange(computed.D);
+      const { pivots: weeklyPivots, range: weekRange  } = extractPivotsAndRange(computed.W);
+
       // Use cached price if available
       let spot = prices?.[ticker] ?? null;
 
@@ -458,7 +483,7 @@ function TickerSearch({ onResult, prices }) {
         }
       }
 
-      onResult({ ticker, sig: computed, spot });
+      onResult({ ticker, sig: computed, spot, dailyPivots, weeklyPivots, dayRange, weekRange });
 
     } catch (err) {
       setError(err.message || 'Failed to load data');
@@ -1023,6 +1048,10 @@ export function SignalsPage({
       const isBull   = entry?.dir === 'long';
       const structureRec = getStructure(ticker, rangePos, cs?.score ?? 0, isActive, isBull);
       const sizeWarning  = getSizeWarning(ticker, prices?.[ticker] ?? null);
+
+      const { pivots: dailyPivots,  range: dayRange  } = extractPivotsAndRange(sig?.D);
+      const { pivots: weeklyPivots, range: weekRange  } = extractPivotsAndRange(sig?.W);
+
       return {
         ticker, bucket, sig, isActive,
         thesis, label, conviction,
@@ -1035,6 +1064,10 @@ export function SignalsPage({
         phase: cs?.phase ?? null,
         structureRec,
         sizeWarning,
+        dailyPivots,
+        weeklyPivots,
+        dayRange,
+        weekRange,
       };
     });
   }, [watchlist, signals, activeTickers, params, fundamentalsMap, contextMap, prices]);
@@ -1142,6 +1175,52 @@ export function SignalsPage({
           </div>
         </div>
 
+        {/* ── Trade Now cards (tier 0) ── */}
+        {(() => {
+          const tier0 = tableRows.filter(r => r.readinessTier.tier === 0);
+          if (tier0.length === 0) return null;
+          const counts = { NAKED: 0, 'PMCC/PMCP': 0, SPREAD: 0 };
+          tier0.forEach(x => {
+            const s = x.structureRec?.structure;
+            if (s && s !== 'SKIP' && counts[s] !== undefined) counts[s]++;
+          });
+          const parts = [];
+          if (counts.NAKED)        parts.push(`${counts.NAKED} NAKED`);
+          if (counts['PMCC/PMCP']) parts.push(`${counts['PMCC/PMCP']} PMCC/P`);
+          if (counts.SPREAD)       parts.push(`${counts.SPREAD} SPREAD`);
+          return (
+            <>
+              <div className={`${styles.tierDivider} ${styles.tierTradeNowDiv ?? ''}`} style={{marginBottom:'10px'}}>
+                <span className={styles.tierDividerLabel}>
+                  ⚡ Trade now
+                  {parts.length > 0 && (
+                    <span className={styles.tierCounterNote}> · {parts.join(' · ')}</span>
+                  )}
+                </span>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:'6px',marginBottom:'16px'}}>
+                {tier0.map(r => (
+                  <RichSignalCard
+                    key={r.ticker}
+                    r={r}
+                    prices={prices}
+                    groups={groups}
+                    fundamentalsMap={fundamentalsMap}
+                    onOpenResearch={(t, s, positions, fallback) =>
+                      setResearchTarget({
+                        ticker: t, sig: s,
+                        activePositions: positions ?? [],
+                        fallbackSpot: fallback ?? prices?.[t] ?? null,
+                      })
+                    }
+                  />
+                ))}
+              </div>
+            </>
+          );
+        })()}
+
+        {/* ── Remaining tiers in table ── */}
         <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead>
@@ -1159,61 +1238,37 @@ export function SignalsPage({
               </tr>
             </thead>
             <tbody>
-              {tableRows.map((r, idx) => {
-                const prevTier = idx > 0
-                  ? tableRows[idx-1].readinessTier.tier : -1;
-                const showDivider = sortBy === 'readiness'
-                  && r.readinessTier.tier !== prevTier;
+              {tableRows.filter(r => r.readinessTier.tier !== 0).map((r, idx, arr) => {
+                const prevTier = idx > 0 ? arr[idx-1].readinessTier.tier : -1;
+                const showDivider = sortBy === 'readiness' && r.readinessTier.tier !== prevTier;
                 const tierMeta = TIER_META[r.readinessTier.tier];
                 return (
                   <React.Fragment key={r.ticker}>
-                    {showDivider && tierMeta && (() => {
-                      let structureNote = null;
-                      if (r.readinessTier.tier === 0) {
-                        const tier0rows = tableRows.filter(x => x.readinessTier.tier === 0);
-                        const counts = { NAKED: 0, 'PMCC/PMCP': 0, SPREAD: 0 };
-                        tier0rows.forEach(x => {
-                          const s = x.structureRec?.structure;
-                          if (s && s !== 'SKIP' && counts[s] !== undefined) counts[s]++;
-                        });
-                        const parts = [];
-                        if (counts.NAKED)       parts.push(`${counts.NAKED} NAKED`);
-                        if (counts['PMCC/PMCP']) parts.push(`${counts['PMCC/PMCP']} PMCC/P`);
-                        if (counts.SPREAD)      parts.push(`${counts.SPREAD} SPREAD`);
-                        if (parts.length) structureNote = parts.join(' · ');
-                      }
-                      return (
-                        <tr>
-                          <td colSpan={99}
-                            className={`${styles.tierDivider}
-                              ${styles[tierMeta.cls + 'Div'] ?? ''}
-                              ${r.readinessTier.tier === 2 ? styles.tierCounterDiv : ''}
-                            `}>
-                            <span className={styles.tierDividerLabel}>
-                              {r.readinessTier.tier === 0 && '⚡ '}
-                              {r.readinessTier.tier === 1 && '⏳ '}
-                              {r.readinessTier.tier === 2 && '↩ '}
-                              {tierMeta.label}
-                              {structureNote && (
-                                <span className={styles.tierCounterNote}>
-                                  · {structureNote}
-                                </span>
-                              )}
-                              {r.readinessTier.tier === 1 && r.readinessTier.pendingGates?.length > 0 && (
-                                <span className={styles.tierCounterNote}>
-                                  · waiting: {r.readinessTier.pendingGates[0]}
-                                </span>
-                              )}
-                              {r.readinessTier.tier === 2 && (
-                                <span className={styles.tierCounterNote}>
-                                  · half size · opposite direction
-                                </span>
-                              )}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })()}
+                    {showDivider && tierMeta && (
+                      <tr>
+                        <td colSpan={99}
+                          className={`${styles.tierDivider}
+                            ${styles[tierMeta.cls + 'Div'] ?? ''}
+                            ${r.readinessTier.tier === 2 ? styles.tierCounterDiv : ''}
+                          `}>
+                          <span className={styles.tierDividerLabel}>
+                            {r.readinessTier.tier === 1 && '⏳ '}
+                            {r.readinessTier.tier === 2 && '↩ '}
+                            {tierMeta.label}
+                            {r.readinessTier.tier === 1 && r.readinessTier.pendingGates?.length > 0 && (
+                              <span className={styles.tierCounterNote}>
+                                · waiting: {r.readinessTier.pendingGates[0]}
+                              </span>
+                            )}
+                            {r.readinessTier.tier === 2 && (
+                              <span className={styles.tierCounterNote}>
+                                · half size · opposite direction
+                              </span>
+                            )}
+                          </span>
+                        </td>
+                      </tr>
+                    )}
                     <TableRow
                       ticker={r.ticker}
                       bucket={r.bucket}
@@ -1236,8 +1291,7 @@ export function SignalsPage({
                           ticker: t,
                           sig: s,
                           activePositions: positions ?? [],
-                          fallbackSpot: fallback
-                            ?? prices?.[t] ?? null,
+                          fallbackSpot: fallback ?? prices?.[t] ?? null,
                         })
                       }
                     />
@@ -1266,6 +1320,241 @@ export function SignalsPage({
         />
       )}
 
+    </div>
+  );
+}
+
+// ── Rich Signal Card (Trade Now tier only) ────────────
+function RangePivotBar({ label, range, pivots, spot }) {
+  if (!range || !pivots) return null;
+  const { low, high } = range;
+  const span = high - low;
+  if (span <= 0) return null;
+
+  const pct = (v) => Math.max(0, Math.min(100, ((v - low) / span) * 100));
+  const spotPct  = pct(spot ?? low);
+  const s1Pct    = pct(pivots.s1);
+  const pPct     = pct(pivots.p);
+  const r1Pct    = pct(pivots.r1);
+
+  const ticks = [
+    { name: 'S1', pct: s1Pct, val: pivots.s1, color: 'var(--green)' },
+    { name: 'P',  pct: pPct,  val: pivots.p,  color: 'var(--text2)' },
+    { name: 'R1', pct: r1Pct, val: pivots.r1, color: 'var(--red)'   },
+  ];
+
+  return (
+    <div style={{marginBottom:'22px'}}>
+      <div style={{fontSize:'9px',fontWeight:'700',color:'var(--text3)',letterSpacing:'.07em',textTransform:'uppercase',marginBottom:'28px'}}>
+        {label}
+      </div>
+      <div style={{position:'relative',height:'6px',borderRadius:'99px',background:'var(--bg3)',marginTop:'32px'}}>
+        {/* colored zones: left of P = green, right of P = red */}
+        <div style={{position:'absolute',left:'0',top:'0',height:'100%',width:`${pPct}%`,background:'var(--green-dim)',borderRadius:'99px 0 0 99px'}} />
+        <div style={{position:'absolute',left:`${pPct}%`,top:'0',height:'100%',width:`${100-pPct}%`,background:'var(--red-dim)',borderRadius:'0 99px 99px 0'}} />
+
+        {/* pivot ticks */}
+        {ticks.map(t => (
+          <div key={t.name} style={{position:'absolute',left:`${t.pct}%`,top:'-26px',transform:'translateX(-50%)',display:'flex',flexDirection:'column',alignItems:'center',gap:'2px',zIndex:1}}>
+            <div style={{fontSize:'8px',fontWeight:'700',color:t.color,whiteSpace:'nowrap'}}>{t.name}</div>
+            <div style={{fontSize:'8px',color:'var(--text3)',fontFamily:'var(--mono)',whiteSpace:'nowrap'}}>${t.val?.toFixed(1)}</div>
+            <div style={{width:'2px',height:'14px',background:t.color,borderRadius:'1px'}} />
+          </div>
+        ))}
+
+        {/* spot price star marker */}
+        {spot != null && (
+          <div style={{position:'absolute',left:`${spotPct}%`,top:'50%',transform:'translate(-50%,-50%)',zIndex:10,display:'flex',flexDirection:'column',alignItems:'center'}}>
+            <div style={{
+              width:'22px',height:'22px',borderRadius:'50%',
+              background:'var(--amber)',border:'2px solid var(--bg1)',
+              display:'flex',alignItems:'center',justifyContent:'center',
+              boxShadow:'0 0 8px rgba(245,158,11,.5)',
+            }}>
+              <i className="ti ti-star-filled" style={{fontSize:'10px',color:'#000'}} />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* range endpoints */}
+      <div style={{display:'flex',justifyContent:'space-between',marginTop:'6px'}}>
+        <span style={{fontSize:'9px',color:'var(--text3)',fontFamily:'var(--mono)'}}>${low?.toFixed(2)} low</span>
+        <span style={{fontSize:'9px',color:'var(--text3)',fontFamily:'var(--mono)'}}>${high?.toFixed(2)} high</span>
+      </div>
+    </div>
+  );
+}
+
+function RichSignalCard({ r, prices, groups, fundamentalsMap, onOpenResearch }) {
+  const { ticker, sig, score, structureRec, sizeWarning, dailyPivots, weeklyPivots, dayRange, weekRange, readinessTier } = r;
+  const spot      = prices?.[ticker] ?? null;
+  const iv        = getIV(ticker);
+  const isBull    = sig?._entry?.dir === 'long';
+  const wSince    = sig?.W?.since ?? 0;
+  const fundamentals = fundamentalsMap?.[ticker] ?? null;
+  const news      = fundamentals?.news ?? [];
+  const activePos = groups?.find(g => g.t === ticker)?.pos ?? [];
+
+  // Structure label
+  const rawStructure = structureRec?.structure ?? 'NAKED';
+  const effectiveStructure = rawStructure === 'PMCC/PMCP' ? (isBull ? 'PMCC' : 'PMCP') : rawStructure;
+  const structureAction = effectiveStructure === 'NAKED'
+    ? (isBull ? 'Sell put' : 'Sell call')
+    : effectiveStructure === 'PMCC' ? 'Buy call LEAP'
+    : effectiveStructure === 'PMCP' ? 'Buy put LEAP'
+    : 'Defined risk spread';
+
+  // Timeframe strip value
+  function tfValue(tfKey) {
+    const s = sig?.[tfKey];
+    if (!s) return { label: '—', bull: null };
+    const xs = s.xs ?? 0;
+    const since = s.since ?? 1;
+    if (xs >= 1)  return { label: `✅${since}`, bull: true  };
+    if (xs <= -1) return { label: `⬇${since}`, bull: false };
+    return { label: '—', bull: null };
+  }
+
+  // News sentiment
+  const WARN_WORDS = /risk|concern|volatility|warning|drop|fall|decline|miss|loss|fear|uncertain/i;
+  function newsIcon(headline) {
+    return WARN_WORDS.test(headline ?? '')
+      ? { icon: 'ti-alert-triangle', bg: 'var(--amber-dim)', color: 'var(--amber)' }
+      : { icon: 'ti-news',           bg: 'var(--blue-dim)',  color: 'var(--blue)'  };
+  }
+  function newsAge(datetime) {
+    if (!datetime) return '';
+    const ms = Date.now() - datetime * 1000;
+    if (ms < 3600000)   return `${Math.round(ms/60000)}m ago`;
+    if (ms < 86400000)  return `${Math.round(ms/3600000)}h ago`;
+    return `${Math.round(ms/86400000)}d ago`;
+  }
+
+  const card = {
+    background:'var(--bg2)', border:'1px solid var(--border)',
+    borderRadius:'12px', padding:'16px 18px', cursor:'pointer',
+    transition:'border-color .15s',
+  };
+
+  return (
+    <div style={card} onClick={() => onOpenResearch(ticker, sig, activePos, spot)}>
+
+      {/* ── Header row ── */}
+      <div style={{display:'flex',alignItems:'center',gap:'9px',marginBottom:'14px',flexWrap:'wrap'}}>
+        {/* Ticker */}
+        <span style={{fontSize:'16px',fontWeight:'500',color:'var(--text)',fontFamily:'var(--sans)'}}>{ticker}</span>
+
+        {/* Price */}
+        {spot != null && (
+          <span style={{fontFamily:'var(--mono)',fontSize:'13px',color:'var(--text2)'}}>${spot.toFixed(2)}</span>
+        )}
+
+        {/* IV chip */}
+        <span style={{
+          fontFamily:'var(--mono)',fontSize:'11px',fontWeight:'600',
+          padding:'3px 8px',borderRadius:'7px',
+          background: iv >= 0.60 ? 'var(--red-dim)'   : 'var(--amber-dim)',
+          color:      iv >= 0.60 ? 'var(--red)'        : 'var(--amber)',
+        }}>
+          <i className="ti ti-activity" style={{fontSize:'10px',marginRight:'3px'}} />
+          IV {Math.round(iv*100)}%
+        </span>
+
+        {/* Direction pill */}
+        <span style={{
+          fontSize:'13px',fontWeight:'600',padding:'4px 11px',borderRadius:'20px',
+          background: isBull ? 'var(--green-dim)' : 'var(--red-dim)',
+          color:      isBull ? 'var(--green)'     : 'var(--red)',
+          display:'inline-flex',alignItems:'center',gap:'4px',
+        }}>
+          <i className={`ti ${isBull ? 'ti-trending-up' : 'ti-trending-down'}`} style={{fontSize:'12px'}} />
+          {isBull ? 'Bull' : 'Bear'}
+        </span>
+
+        {/* Timeframe strip */}
+        <div style={{display:'flex',gap:'4px'}}>
+          {['W','D','4H','1H'].map(tf => {
+            const { label, bull } = tfValue(tf);
+            return (
+              <div key={tf} style={{
+                padding:'4px 7px',borderRadius:'6px',minWidth:'32px',textAlign:'center',
+                background: bull === true ? 'var(--green-dim)' : bull === false ? 'var(--red-dim)' : 'var(--bg3)',
+              }}>
+                <div style={{fontSize:'8px',color:'var(--text3)',fontFamily:'var(--mono)',letterSpacing:'.04em'}}>{tf}</div>
+                <div style={{
+                  fontSize:'11px',fontWeight:'700',fontFamily:'var(--mono)',
+                  color: bull === true ? 'var(--green)' : bull === false ? 'var(--red)' : 'var(--text3)',
+                }}>{label}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Score + Structure — right aligned */}
+        <div style={{marginLeft:'auto',display:'flex',gap:'10px',alignItems:'center'}}>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontFamily:'var(--mono)',fontSize:'16px',fontWeight:'700',color:'var(--amber)',lineHeight:1}}>{score ?? '—'}</div>
+            <div style={{fontSize:'7px',color:'var(--text3)',letterSpacing:'.08em',textTransform:'uppercase',marginTop:'2px'}}>SCORE</div>
+          </div>
+          {effectiveStructure !== 'SKIP' && (
+            <span style={{
+              padding:'5px 10px',borderRadius:'8px',
+              background: effectiveStructure === 'NAKED' ? 'var(--green-dim)'  : 'rgba(139,92,246,.15)',
+              color:      effectiveStructure === 'NAKED' ? 'var(--green)'      : 'var(--accent2)',
+              fontSize:'12px',fontWeight:'600',fontFamily:'var(--mono)',
+              display:'inline-flex',alignItems:'center',gap:'5px',
+            }}>
+              <i className={`ti ${isBull ? 'ti-arrow-up-circle' : 'ti-arrow-down-circle'}`} style={{fontSize:'13px'}} />
+              {effectiveStructure} · {structureAction}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ── Range bars ── */}
+      <RangePivotBar label="Weekly range" range={weekRange} pivots={weeklyPivots} spot={spot} />
+      <RangePivotBar label="Daily range"  range={dayRange}  pivots={dailyPivots}  spot={spot} />
+
+      {/* ── Context tag ── */}
+      {wSince > 12 ? (
+        <div style={{display:'inline-flex',alignItems:'center',gap:'4px',fontSize:'10px',padding:'4px 9px',borderRadius:'6px',fontWeight:'500',background:'var(--amber-dim)',color:'var(--amber)',marginBottom:'10px'}}>
+          <i className="ti ti-clock" style={{fontSize:'11px'}} />
+          W signal established {wSince}d — not fresh
+        </div>
+      ) : wSince > 0 && wSince <= 5 ? (
+        <div style={{display:'inline-flex',alignItems:'center',gap:'4px',fontSize:'10px',padding:'4px 9px',borderRadius:'6px',fontWeight:'500',background:'var(--bg3)',color:'var(--text2)',marginBottom:'10px'}}>
+          <i className="ti ti-sparkles" style={{fontSize:'11px'}} />
+          Fresh signal — ideal entry timing
+        </div>
+      ) : null}
+
+      {/* ── News box ── */}
+      {news.length > 0 && (
+        <div style={{background:'var(--bg3)',borderRadius:'10px',padding:'10px 12px'}}>
+          {news.slice(0,3).map((item, i) => {
+            const title = item.headline ?? item.title ?? '';
+            const { icon, bg, color } = newsIcon(title);
+            return (
+              <div key={i} style={{display:'flex',gap:'9px',alignItems:'flex-start',paddingTop: i > 0 ? '8px' : 0, marginTop: i > 0 ? '8px' : 0, borderTop: i > 0 ? '1px solid var(--border)' : 'none'}}>
+                <div style={{width:'20px',height:'20px',borderRadius:'6px',background:bg,color,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                  <i className={`ti ${icon}`} style={{fontSize:'11px'}} />
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <a href={item.url} target="_blank" rel="noopener noreferrer"
+                    style={{fontSize:'11px',color:'var(--text)',textDecoration:'none',display:'block',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}
+                    onClick={e => e.stopPropagation()}>
+                    {title}
+                  </a>
+                  <div style={{fontSize:'9px',color:'var(--text3)',fontFamily:'var(--mono)',marginTop:'2px'}}>
+                    {item.source}{item.source && newsAge(item.datetime) ? ' · ' : ''}{newsAge(item.datetime)}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

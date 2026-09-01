@@ -374,6 +374,7 @@ export function calcComposite(candles) {
     ...ich, rsi, macdDir: macd.dir,
     macdCross: macd.cross, macdHist: macd.hist,
     rsiDivergence, kijunExtended,
+    candles,
   };
 }
 
@@ -1315,6 +1316,15 @@ export function calcCompositeScore({
       earnings:   -earningsPenalty,
     }
   };
+}
+
+export function calcPivots(high, low, close) {
+  const p  = (high + low + close) / 3;
+  const r1 = 2 * p - low;
+  const s1 = 2 * p - high;
+  const r2 = p + (high - low);
+  const s2 = p - (high - low);
+  return { p, r1, s1, r2, s2 };
 }
 
 // ─── Formatters ───────────────────────────────────────────────────
