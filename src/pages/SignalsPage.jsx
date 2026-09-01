@@ -7,7 +7,7 @@ import { ResearchCard } from '../components/ResearchCard';
 import { loadParams, tickerCollStatus } from '../hooks/useParams';
 import { calcCollateral, calcComposite, calcEntry, calcStrategy,
   calcCompositeScore } from '../lib/finance';
-import { getLeapExpiries } from '../lib/strikeCalc';
+import { getLeapExpiries, getStructure, getSizeWarning } from '../lib/strikeCalc';
 import styles from './SignalsPage.module.css';
 
 
@@ -1018,6 +1018,11 @@ export function SignalsPage({
         spot: prices?.[ticker] ?? null,
         marketSig: ticker !== 'QQQ' ? (signals?.['QQQ'] ?? null) : null
       }) : null;
+      const rangePos = cs?.rangePos ?? null;
+      const entry    = sig?._entry ?? null;
+      const isBull   = entry?.dir === 'long';
+      const structureRec = getStructure(ticker, rangePos, cs?.score ?? 0, isActive, isBull);
+      const sizeWarning  = getSizeWarning(ticker, prices?.[ticker] ?? null);
       return {
         ticker, bucket, sig, isActive,
         thesis, label, conviction,
@@ -1028,6 +1033,8 @@ export function SignalsPage({
         score: cs?.score ?? null,
         scoreTier: cs?.tier ?? null,
         phase: cs?.phase ?? null,
+        structureRec,
+        sizeWarning,
       };
     });
   }, [watchlist, signals, activeTickers, params, fundamentalsMap, contextMap, prices]);
@@ -1160,32 +1167,53 @@ export function SignalsPage({
                 const tierMeta = TIER_META[r.readinessTier.tier];
                 return (
                   <React.Fragment key={r.ticker}>
-                    {showDivider && tierMeta && (
-                      <tr>
-                        <td colSpan={99}
-                          className={`${styles.tierDivider}
-                            ${styles[tierMeta.cls + 'Div'] ?? ''}
-                            ${r.readinessTier.tier === 2 ? styles.tierCounterDiv : ''}
-                          `}>
-                          <span className={styles.tierDividerLabel}>
-                            {r.readinessTier.tier === 0 && '⚡ '}
-                            {r.readinessTier.tier === 1 && '⏳ '}
-                            {r.readinessTier.tier === 2 && '↩ '}
-                            {tierMeta.label}
-                            {r.readinessTier.tier === 1 && r.readinessTier.pendingGates?.length > 0 && (
-                              <span className={styles.tierCounterNote}>
-                                · waiting: {r.readinessTier.pendingGates[0]}
-                              </span>
-                            )}
-                            {r.readinessTier.tier === 2 && (
-                              <span className={styles.tierCounterNote}>
-                                · half size · opposite direction
-                              </span>
-                            )}
-                          </span>
-                        </td>
-                      </tr>
-                    )}
+                    {showDivider && tierMeta && (() => {
+                      let structureNote = null;
+                      if (r.readinessTier.tier === 0) {
+                        const tier0rows = tableRows.filter(x => x.readinessTier.tier === 0);
+                        const counts = { NAKED: 0, 'PMCC/PMCP': 0, SPREAD: 0 };
+                        tier0rows.forEach(x => {
+                          const s = x.structureRec?.structure;
+                          if (s && s !== 'SKIP' && counts[s] !== undefined) counts[s]++;
+                        });
+                        const parts = [];
+                        if (counts.NAKED)       parts.push(`${counts.NAKED} NAKED`);
+                        if (counts['PMCC/PMCP']) parts.push(`${counts['PMCC/PMCP']} PMCC/P`);
+                        if (counts.SPREAD)      parts.push(`${counts.SPREAD} SPREAD`);
+                        if (parts.length) structureNote = parts.join(' · ');
+                      }
+                      return (
+                        <tr>
+                          <td colSpan={99}
+                            className={`${styles.tierDivider}
+                              ${styles[tierMeta.cls + 'Div'] ?? ''}
+                              ${r.readinessTier.tier === 2 ? styles.tierCounterDiv : ''}
+                            `}>
+                            <span className={styles.tierDividerLabel}>
+                              {r.readinessTier.tier === 0 && '⚡ '}
+                              {r.readinessTier.tier === 1 && '⏳ '}
+                              {r.readinessTier.tier === 2 && '↩ '}
+                              {tierMeta.label}
+                              {structureNote && (
+                                <span className={styles.tierCounterNote}>
+                                  · {structureNote}
+                                </span>
+                              )}
+                              {r.readinessTier.tier === 1 && r.readinessTier.pendingGates?.length > 0 && (
+                                <span className={styles.tierCounterNote}>
+                                  · waiting: {r.readinessTier.pendingGates[0]}
+                                </span>
+                              )}
+                              {r.readinessTier.tier === 2 && (
+                                <span className={styles.tierCounterNote}>
+                                  · half size · opposite direction
+                                </span>
+                              )}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })()}
                     <TableRow
                       ticker={r.ticker}
                       bucket={r.bucket}
@@ -1201,6 +1229,8 @@ export function SignalsPage({
                       readinessTier={r.readinessTier}
                       score={r.score}
                       phase={r.phase}
+                      structureRec={r.structureRec}
+                      sizeWarning={r.sizeWarning}
                       onOpenResearch={(t, s, positions, fallback) =>
                         setResearchTarget({
                           ticker: t,
@@ -1245,7 +1275,7 @@ function TableRow({
   ticker, bucket, sig, isActive, thesis, label,
   conviction, violations, isBlocked, isOpportunity,
   signalsLoading, onOpenResearch, prices, groups,
-  readinessTier, score, phase,
+  readinessTier, score, phase, structureRec, sizeWarning,
   // legacy row prop support
   row,
 }) {
@@ -1338,6 +1368,30 @@ function TableRow({
           <span className={`${styles.tierBadge} ${styles[TIER_META[tierNum]?.cls]}`}>
             {TIER_META[tierNum]?.short}
           </span>
+        )}
+        {structureRec && structureRec.structure !== 'SKIP' && (
+          <span style={{
+            display:'inline-block', marginLeft:'4px',
+            padding:'1px 5px', borderRadius:'3px',
+            fontSize:'9px', fontFamily:'var(--mono)', fontWeight:'700',
+            background: structureRec.structure === 'NAKED'    ? 'rgba(34,197,94,.15)'
+                      : structureRec.structure === 'PMCC/PMCP' ? 'rgba(139,92,246,.15)'
+                      : 'rgba(59,130,246,.15)',
+            color:      structureRec.structure === 'NAKED'    ? '#16a34a'
+                      : structureRec.structure === 'PMCC/PMCP' ? '#7c3aed'
+                      : '#2563eb',
+            border: `1px solid ${
+              structureRec.structure === 'NAKED'    ? 'rgba(34,197,94,.3)'
+            : structureRec.structure === 'PMCC/PMCP' ? 'rgba(139,92,246,.3)'
+            : 'rgba(59,130,246,.3)'}`,
+          }}>
+            {structureRec.structure === 'PMCC/PMCP' ? 'PMCC/P' : structureRec.structure}
+          </span>
+        )}
+        {sizeWarning && (
+          <div style={{fontSize:'9px',color:'var(--amber)',marginTop:'2px',fontFamily:'var(--mono)'}}>
+            ⚠ {sizeWarning}
+          </div>
         )}
         {sig?._strategy?.description && (
           <div className={styles.sigDesc}>

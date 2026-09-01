@@ -26,13 +26,14 @@ const RF = 0.045;
 
 // IV table — same as finance.js
 const IV_TABLE = {
-  NVDA:0.55, SNDK:0.65, MU:0.50, AMD:0.45, ARM:0.55,
-  AVGO:0.38, LRCX:0.42, ASML:0.38, SMCI:0.60, DELL:0.40,
-  MSFT:0.28, GOOGL:0.30, META:0.35, AAPL:0.25, AMZN:0.32,
-  ORCL:0.35, ADBE:0.38, QQQ:0.22, PLTR:0.65, COIN:0.70,
-  HOOD:0.65, MSTR:0.80, HIMS:0.70, LULU:0.40, NKE:0.30,
-  COST:0.22, TGT:0.38, HD:0.25, W:0.65, CMG:0.32,
-  DKNG:0.55, CVNA:0.75, RIVN:0.70, CAT:0.30, NFLX:0.38,
+  NVDA:0.55, SNDK:1.30, MU:0.55, AMD:0.45, ARM:0.60,
+  AVGO:0.42, LRCX:0.42, ASML:0.38, SMCI:0.65, DELL:0.42,
+  MSFT:0.30, GOOGL:0.32, META:0.38, AAPL:0.28, AMZN:0.35,
+  ORCL:0.35, ADBE:0.55, QQQ:0.22, PLTR:0.70, COIN:0.75,
+  HOOD:0.70, MSTR:0.85, HIMS:1.00, LULU:0.42, NKE:0.32,
+  COST:0.22, TGT:0.40, HD:0.28, W:0.70, CMG:0.35,
+  DKNG:0.60, CVNA:0.80, RIVN:0.75, CAT:0.28, NFLX:0.42,
+  TSLA:0.65, CRWD:0.55, SEGW:0.50, AMC:0.90,
 };
 
 export function getIV(ticker) {
@@ -270,4 +271,20 @@ export function buildLeapRec({ spot, ticker, isCall, deltaTier, dte }) {
       delta: (Math.abs(bsDelta(spot, strike, T, RF, iv, isCall))*100).toFixed(0),
     };
   });
+}
+
+export function getStructure(ticker, rangePos, score, isActive, isBull) {
+  if (isActive) return { structure: 'SKIP', reason: 'Already in position' };
+  if (score < 60) return { structure: 'SKIP', reason: 'Score too low' };
+  const isCounterTrend = isBull ? rangePos > 0.82 : rangePos < 0.18;
+  if (isCounterTrend) return { structure: 'SPREAD', reason: 'Counter-trend — defined risk only' };
+  const iv = getIV(ticker);
+  if (iv >= 0.60) return { structure: 'NAKED', reason: 'High IV — premium rich' };
+  return { structure: 'PMCC/PMCP', reason: 'Low IV — LEAP gives leverage' };
+}
+
+export function getSizeWarning(ticker, spot) {
+  if (spot > 1000) return 'High value — 1 contract, verify margin';
+  if (spot > 500)  return 'Size carefully — 1-2 contracts max';
+  return null;
 }
