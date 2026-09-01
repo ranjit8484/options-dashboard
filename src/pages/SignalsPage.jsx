@@ -1344,60 +1344,71 @@ function TableRow({
         </button>
       </td>
       <td>
-        {sig?._strategy?.noTrade ? (
-          <span className={styles.waitBadge}>⏸ Wait</span>
-        ) : (
-          <span className={`${styles.tradeBadge} ${tradeLabelClass(label)}`}>
-            {label}
-          </span>
-        )}
-        {activePos?.length > 0 && (() => {
-          const shortPos = activePos.find(
-            p => p.dir==='sc' || p.dir==='sp'
-          );
-          if (!shortPos) return null;
-          const badge = getSpreadExitBadge(shortPos, prices?.[ticker]);
-          if (!badge) return null;
+        {(() => {
+          const isBull = sig?._entry?.dir === 'long';
+          // Resolve effective structure for this row
+          let effectiveStructure = structureRec?.structure ?? null;
+          if (tierNum === 2) effectiveStructure = 'SPREAD'; // counter-trend always spread
+          // PMCC/PMCP direction-aware label
+          const structureLabel = effectiveStructure === 'PMCC/PMCP'
+            ? (isBull ? 'PMCC' : 'PMCP')
+            : effectiveStructure;
+
+          const showStructure = effectiveStructure && (tierNum === 0 || tierNum === 2);
+          const isSkip = effectiveStructure === 'SKIP';
+
+          const structureColor = {
+            NAKED:      { bg:'rgba(34,197,94,.15)',   color:'#16a34a', border:'rgba(34,197,94,.3)' },
+            'PMCC/PMCP':{ bg:'rgba(139,92,246,.15)',  color:'#7c3aed', border:'rgba(139,92,246,.3)' },
+            SPREAD:     { bg:'rgba(59,130,246,.15)',   color:'#2563eb', border:'rgba(59,130,246,.3)' },
+            SKIP:       { bg:'rgba(100,100,100,.12)', color:'var(--text3)', border:'rgba(100,100,100,.2)' },
+          }[effectiveStructure] ?? {};
+
           return (
-            <span className={`${styles.exitBadge} ${styles[badge.cls]}`}>
-              {badge.label}
-            </span>
+            <>
+              {/* Exit badge for active positions */}
+              {activePos?.length > 0 && (() => {
+                const shortPos = activePos.find(p => p.dir==='sc' || p.dir==='sp');
+                if (!shortPos) return null;
+                const badge = getSpreadExitBadge(shortPos, prices?.[ticker]);
+                if (!badge) return null;
+                return (
+                  <span className={`${styles.exitBadge} ${styles[badge.cls]}`}>
+                    {badge.label}
+                  </span>
+                );
+              })()}
+
+              {/* Structure badge — only for TRADE NOW and COUNTER; SKIP always shows */}
+              {(showStructure || isSkip) && effectiveStructure && (
+                <span style={{
+                  display:'inline-block', marginRight:'4px',
+                  padding:'1px 5px', borderRadius:'3px',
+                  fontSize:'9px', fontFamily:'var(--mono)', fontWeight:'700',
+                  background: structureColor.bg,
+                  color: structureColor.color,
+                  border: `1px solid ${structureColor.border}`,
+                }}>
+                  {structureLabel}
+                </span>
+              )}
+
+              {/* Tier badge */}
+              {tierNum !== undefined && !isSkip && (
+                <span className={`${styles.tierBadge} ${styles[TIER_META[tierNum]?.cls]}`}>
+                  {TIER_META[tierNum]?.short}
+                </span>
+              )}
+
+              {/* Size warning */}
+              {sizeWarning && tierNum === 0 && (
+                <div style={{fontSize:'9px',color:'var(--amber)',marginTop:'2px',fontFamily:'var(--mono)'}}>
+                  ⚠ {sizeWarning}
+                </div>
+              )}
+            </>
           );
         })()}
-        {tierNum !== undefined && (
-          <span className={`${styles.tierBadge} ${styles[TIER_META[tierNum]?.cls]}`}>
-            {TIER_META[tierNum]?.short}
-          </span>
-        )}
-        {structureRec && structureRec.structure !== 'SKIP' && (
-          <span style={{
-            display:'inline-block', marginLeft:'4px',
-            padding:'1px 5px', borderRadius:'3px',
-            fontSize:'9px', fontFamily:'var(--mono)', fontWeight:'700',
-            background: structureRec.structure === 'NAKED'    ? 'rgba(34,197,94,.15)'
-                      : structureRec.structure === 'PMCC/PMCP' ? 'rgba(139,92,246,.15)'
-                      : 'rgba(59,130,246,.15)',
-            color:      structureRec.structure === 'NAKED'    ? '#16a34a'
-                      : structureRec.structure === 'PMCC/PMCP' ? '#7c3aed'
-                      : '#2563eb',
-            border: `1px solid ${
-              structureRec.structure === 'NAKED'    ? 'rgba(34,197,94,.3)'
-            : structureRec.structure === 'PMCC/PMCP' ? 'rgba(139,92,246,.3)'
-            : 'rgba(59,130,246,.3)'}`,
-          }}>
-            {structureRec.structure === 'PMCC/PMCP' ? 'PMCC/P' : structureRec.structure}
-          </span>
-        )}
-        {sizeWarning && (
-          <div style={{fontSize:'9px',color:'var(--amber)',marginTop:'2px',fontFamily:'var(--mono)'}}>
-            ⚠ {sizeWarning}
-          </div>
-        )}
-        {sig?._strategy?.description && (
-          <div className={styles.sigDesc}>
-            {sig._strategy.description}
-          </div>
-        )}
       </td>
       <td>
         {tierNum === 0 && (
