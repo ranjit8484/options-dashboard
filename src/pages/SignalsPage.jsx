@@ -1342,41 +1342,49 @@ export function SignalsPage({
 
 // ── Rich Signal Card (Trade Now tier only) ────────────
 function RangePivotBar({ label, range, pivots, spot }) {
-  if (!range || !pivots) return null;
+  if (!range) return null;
   const { low, high } = range;
   const span = high - low;
   if (span <= 0) return null;
 
   const pct = (v) => Math.max(0, Math.min(100, ((v - low) / span) * 100));
-  const spotPct  = pct(spot ?? low);
-  const s1Pct    = pct(pivots.s1);
-  const pPct     = pct(pivots.p);
-  const r1Pct    = pct(pivots.r1);
+  const spotPct = pct(spot ?? low);
+  const s1Pct   = pivots ? pct(pivots.s1) : null;
+  const pPct    = pivots ? pct(pivots.p)  : null;
+  const r1Pct   = pivots ? pct(pivots.r1) : null;
 
-  const ticks = [
-    { name: 'S1', pct: s1Pct, val: pivots.s1, color: 'var(--green)' },
-    { name: 'P',  pct: pPct,  val: pivots.p,  color: 'var(--text2)' },
-    { name: 'R1', pct: r1Pct, val: pivots.r1, color: 'var(--red)'   },
-  ];
+  // Stagger vertically when pivots are within 8% of each other
+  const S1_P_close  = s1Pct != null && pPct  != null && Math.abs(s1Pct - pPct)  < 8;
+  const P_R1_close  = pPct  != null && r1Pct != null && Math.abs(pPct  - r1Pct) < 8;
+
+  const ticks = pivots ? [
+    { name: 'S1', pct: s1Pct, val: pivots.s1, color: 'var(--green)',  extraY: 0 },
+    { name: 'P',  pct: pPct,  val: pivots.p,  color: 'var(--text2)', extraY: S1_P_close ? 12 : 0 },
+    { name: 'R1', pct: r1Pct, val: pivots.r1, color: 'var(--red)',    extraY: P_R1_close ? 12 : 0 },
+  ] : [];
 
   return (
     <div style={{marginBottom:'22px'}}>
-      <div style={{fontSize:'9px',fontWeight:'700',color:'var(--text3)',letterSpacing:'.07em',textTransform:'uppercase',marginBottom:'28px'}}>
+      <div style={{fontSize:'9px',fontWeight:'700',color:'var(--text3)',letterSpacing:'.07em',textTransform:'uppercase',marginBottom:'30px'}}>
         {label}
       </div>
       {/* padding:0 30px gives the tick labels room at both edges */}
       <div style={{padding:'0 30px'}}>
-        <div style={{position:'relative',height:'6px',borderRadius:'99px',background:'var(--bg3)',marginTop:'32px'}}>
-          {/* colored zones: left of P = green, right of P = red */}
-          <div style={{position:'absolute',left:'0',top:'0',height:'100%',width:`${pPct}%`,background:'var(--green-dim)',borderRadius:'99px 0 0 99px'}} />
-          <div style={{position:'absolute',left:`${pPct}%`,top:'0',height:'100%',width:`${100-pPct}%`,background:'var(--red-dim)',borderRadius:'0 99px 99px 0'}} />
+        <div style={{position:'relative',height:'6px',borderRadius:'99px',background:'var(--bg3)',marginTop:'34px'}}>
+          {/* colored zones: left of P = green-dim, right = red-dim; skip zones if no pivots */}
+          {pivots && (
+            <>
+              <div style={{position:'absolute',left:'0',top:'0',height:'100%',width:`${pPct}%`,background:'var(--green-dim)',borderRadius:'99px 0 0 99px'}} />
+              <div style={{position:'absolute',left:`${pPct}%`,top:'0',height:'100%',width:`${100-pPct}%`,background:'var(--red-dim)',borderRadius:'0 99px 99px 0'}} />
+            </>
+          )}
 
           {/* pivot ticks */}
           {ticks.map(t => (
-            <div key={t.name} style={{position:'absolute',left:`${t.pct}%`,top:'-26px',transform:'translateX(-50%)',display:'flex',flexDirection:'column',alignItems:'center',gap:'2px',zIndex:1}}>
-              <div style={{fontSize:'8px',fontWeight:'700',color:t.color,whiteSpace:'nowrap'}}>{t.name}</div>
-              <div style={{fontSize:'8px',color:'var(--text3)',fontFamily:'var(--mono)',whiteSpace:'nowrap'}}>${t.val?.toFixed(1)}</div>
-              <div style={{width:'2px',height:'14px',background:t.color,borderRadius:'1px'}} />
+            <div key={t.name} style={{position:'absolute',left:`${t.pct}%`,top:`${-34 - t.extraY}px`,transform:'translateX(-50%)',display:'flex',flexDirection:'column',alignItems:'center',gap:'2px',zIndex:1}}>
+              <div style={{fontSize:'12px',fontWeight:'700',color:t.color,whiteSpace:'nowrap'}}>{t.name}</div>
+              <div style={{fontSize:'11px',color:'var(--text3)',fontFamily:'var(--mono)',whiteSpace:'nowrap'}}>${t.val?.toFixed(1)}</div>
+              <div style={{width:'2px',height:`${14 + t.extraY}px`,background:t.color,borderRadius:'1px'}} />
             </div>
           ))}
 
@@ -1397,8 +1405,8 @@ function RangePivotBar({ label, range, pivots, spot }) {
 
         {/* range endpoints */}
         <div style={{display:'flex',justifyContent:'space-between',marginTop:'8px'}}>
-          <span style={{fontSize:'9px',color:'var(--text3)',fontFamily:'var(--mono)'}}>${low?.toFixed(2)} low</span>
-          <span style={{fontSize:'9px',color:'var(--text3)',fontFamily:'var(--mono)'}}>${high?.toFixed(2)} high</span>
+          <span style={{fontSize:'10px',fontWeight:'500',color:'var(--text3)',fontFamily:'var(--mono)'}}>${low?.toFixed(2)} low</span>
+          <span style={{fontSize:'10px',fontWeight:'500',color:'var(--text3)',fontFamily:'var(--mono)'}}>${high?.toFixed(2)} high</span>
         </div>
       </div>
     </div>
