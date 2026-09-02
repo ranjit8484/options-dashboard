@@ -93,6 +93,7 @@ export function useSignals(tickers) {
           try {
             const raw     = tfData[tf.key] ?? [];
             const candles = raw.map(c => ({ h: c[1], l: c[2], c: c[3] }));
+            console.log('RAW CANDLES CHECK (useSignals)', ticker, tf.key, 'first:', candles[0], 'last:', candles[candles.length-1], 'length:', candles.length);
             const sig = calcComposite(candles);
             if (sig) sig.candles = candles.slice(-60);
             const MAX_SINCE = 100;
@@ -109,6 +110,10 @@ export function useSignals(tickers) {
               }
             }
             computed[ticker][tf.key] = sig ? { ...sig, since } : null;
+            if (tf.key === 'W' || tf.key === 'D') {
+              window.__debugCandles = window.__debugCandles || {};
+              window.__debugCandles[ticker + '_' + tf.key] = candles.slice(-3);
+            }
           } catch (e) {
             console.warn(`Ichimoku error ${ticker} ${tf.key}:`, e.message);
             computed[ticker][tf.key] = null;

@@ -17,13 +17,27 @@ const CONV_ORDER = { full:0, high:1, medium:2, low:3, none:4, exit:5 };
 // ── Pivot + range extraction from sig candles ─────────
 // sig[tf].candles are {h, l, c} objects (last 60 stored by useSignals)
 // Use second-to-last candle = most recently completed period
-function extractPivotsAndRange(sigTf) {
+function extractPivotsAndRange(sigTf, periodsForRange = 4) {
   if (!sigTf?.candles || sigTf.candles.length < 2) return { pivots: null, range: null };
-  const candles = sigTf.candles;
-  const completed = candles[candles.length - 2]; // second-to-last = last closed period
-  const current   = candles[candles.length - 1]; // most recent (in-progress)
+  let candles = sigTf.candles;
+
+  // Remove duplicate trailing candle if present (GScript sometimes double-counts current period)
+  const last = candles[candles.length - 1];
+  const secondLast = candles[candles.length - 2];
+  if (last && secondLast && last.h === secondLast.h && last.l === secondLast.l && last.c === secondLast.c) {
+    candles = candles.slice(0, -1);
+  }
+
+  if (candles.length < 2) return { pivots: null, range: null };
+  const completed = candles[candles.length - 2];
   const pivots = calcPivots(completed.h, completed.l, completed.c);
-  const range  = { high: current.h, low: current.l };
+
+  // Range: use the last N periods (including current) for a meaningful visual range
+  const rangeSlice = candles.slice(-periodsForRange);
+  const range = {
+    high: Math.max(...rangeSlice.map(c => c.h)),
+    low:  Math.min(...rangeSlice.map(c => c.l)),
+  };
   return { pivots, range };
 }
 
@@ -442,6 +456,7 @@ function TickerSearch({ onResult, prices }) {
           const candles = raw.map(c => ({
             h: c[1], l: c[2], c: c[3]
           }));
+          console.log('RAW CANDLES CHECK (analyze)', tf.key, 'first:', candles[0], 'last:', candles[candles.length-1], 'length:', candles.length);
           computed[tf.key] = calcComposite(candles);
         } catch {
           computed[tf.key] = null;
@@ -1051,6 +1066,7 @@ export function SignalsPage({
 
       const { pivots: dailyPivots,  range: dayRange  } = extractPivotsAndRange(sig?.D);
       const { pivots: weeklyPivots, range: weekRange  } = extractPivotsAndRange(sig?.W);
+      console.log('RANGE CHECK', ticker, 'weekRange:', weekRange, 'dayRange:', dayRange, 'same?', JSON.stringify(weekRange) === JSON.stringify(dayRange), 'D candles:', sig?.D?.candles?.length, 'W candles:', sig?.W?.candles?.length, 'D last:', sig?.D?.candles?.slice(-1)[0], 'W last:', sig?.W?.candles?.slice(-1)[0]);
 
       return {
         ticker, bucket, sig, isActive,
@@ -1348,39 +1364,42 @@ function RangePivotBar({ label, range, pivots, spot }) {
       <div style={{fontSize:'9px',fontWeight:'700',color:'var(--text3)',letterSpacing:'.07em',textTransform:'uppercase',marginBottom:'28px'}}>
         {label}
       </div>
-      <div style={{position:'relative',height:'6px',borderRadius:'99px',background:'var(--bg3)',marginTop:'32px'}}>
-        {/* colored zones: left of P = green, right of P = red */}
-        <div style={{position:'absolute',left:'0',top:'0',height:'100%',width:`${pPct}%`,background:'var(--green-dim)',borderRadius:'99px 0 0 99px'}} />
-        <div style={{position:'absolute',left:`${pPct}%`,top:'0',height:'100%',width:`${100-pPct}%`,background:'var(--red-dim)',borderRadius:'0 99px 99px 0'}} />
+      {/* padding:0 30px gives the tick labels room at both edges */}
+      <div style={{padding:'0 30px'}}>
+        <div style={{position:'relative',height:'6px',borderRadius:'99px',background:'var(--bg3)',marginTop:'32px'}}>
+          {/* colored zones: left of P = green, right of P = red */}
+          <div style={{position:'absolute',left:'0',top:'0',height:'100%',width:`${pPct}%`,background:'var(--green-dim)',borderRadius:'99px 0 0 99px'}} />
+          <div style={{position:'absolute',left:`${pPct}%`,top:'0',height:'100%',width:`${100-pPct}%`,background:'var(--red-dim)',borderRadius:'0 99px 99px 0'}} />
 
-        {/* pivot ticks */}
-        {ticks.map(t => (
-          <div key={t.name} style={{position:'absolute',left:`${t.pct}%`,top:'-26px',transform:'translateX(-50%)',display:'flex',flexDirection:'column',alignItems:'center',gap:'2px',zIndex:1}}>
-            <div style={{fontSize:'8px',fontWeight:'700',color:t.color,whiteSpace:'nowrap'}}>{t.name}</div>
-            <div style={{fontSize:'8px',color:'var(--text3)',fontFamily:'var(--mono)',whiteSpace:'nowrap'}}>${t.val?.toFixed(1)}</div>
-            <div style={{width:'2px',height:'14px',background:t.color,borderRadius:'1px'}} />
-          </div>
-        ))}
-
-        {/* spot price star marker */}
-        {spot != null && (
-          <div style={{position:'absolute',left:`${spotPct}%`,top:'50%',transform:'translate(-50%,-50%)',zIndex:10,display:'flex',flexDirection:'column',alignItems:'center'}}>
-            <div style={{
-              width:'22px',height:'22px',borderRadius:'50%',
-              background:'var(--amber)',border:'2px solid var(--bg1)',
-              display:'flex',alignItems:'center',justifyContent:'center',
-              boxShadow:'0 0 8px rgba(245,158,11,.5)',
-            }}>
-              <i className="ti ti-star-filled" style={{fontSize:'10px',color:'#000'}} />
+          {/* pivot ticks */}
+          {ticks.map(t => (
+            <div key={t.name} style={{position:'absolute',left:`${t.pct}%`,top:'-26px',transform:'translateX(-50%)',display:'flex',flexDirection:'column',alignItems:'center',gap:'2px',zIndex:1}}>
+              <div style={{fontSize:'8px',fontWeight:'700',color:t.color,whiteSpace:'nowrap'}}>{t.name}</div>
+              <div style={{fontSize:'8px',color:'var(--text3)',fontFamily:'var(--mono)',whiteSpace:'nowrap'}}>${t.val?.toFixed(1)}</div>
+              <div style={{width:'2px',height:'14px',background:t.color,borderRadius:'1px'}} />
             </div>
-          </div>
-        )}
-      </div>
+          ))}
 
-      {/* range endpoints */}
-      <div style={{display:'flex',justifyContent:'space-between',marginTop:'6px'}}>
-        <span style={{fontSize:'9px',color:'var(--text3)',fontFamily:'var(--mono)'}}>${low?.toFixed(2)} low</span>
-        <span style={{fontSize:'9px',color:'var(--text3)',fontFamily:'var(--mono)'}}>${high?.toFixed(2)} high</span>
+          {/* spot price star marker */}
+          {spot != null && (
+            <div style={{position:'absolute',left:`${spotPct}%`,top:'50%',transform:'translate(-50%,-50%)',zIndex:10,display:'flex',flexDirection:'column',alignItems:'center'}}>
+              <div style={{
+                width:'22px',height:'22px',borderRadius:'50%',
+                background:'var(--amber)',border:'2px solid var(--bg1)',
+                display:'flex',alignItems:'center',justifyContent:'center',
+                boxShadow:'0 0 8px rgba(245,158,11,.5)',
+              }}>
+                <i className="ti ti-star-filled" style={{fontSize:'10px',color:'#000'}} />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* range endpoints */}
+        <div style={{display:'flex',justifyContent:'space-between',marginTop:'8px'}}>
+          <span style={{fontSize:'9px',color:'var(--text3)',fontFamily:'var(--mono)'}}>${low?.toFixed(2)} low</span>
+          <span style={{fontSize:'9px',color:'var(--text3)',fontFamily:'var(--mono)'}}>${high?.toFixed(2)} high</span>
+        </div>
       </div>
     </div>
   );
@@ -1399,11 +1418,7 @@ function RichSignalCard({ r, prices, groups, fundamentalsMap, onOpenResearch }) 
   // Structure label
   const rawStructure = structureRec?.structure ?? 'NAKED';
   const effectiveStructure = rawStructure === 'PMCC/PMCP' ? (isBull ? 'PMCC' : 'PMCP') : rawStructure;
-  const structureAction = effectiveStructure === 'NAKED'
-    ? (isBull ? 'Sell put' : 'Sell call')
-    : effectiveStructure === 'PMCC' ? 'Buy call LEAP'
-    : effectiveStructure === 'PMCP' ? 'Buy put LEAP'
-    : 'Defined risk spread';
+  const structureAction = isBull ? 'Sell put' : 'Sell call';
 
   // Timeframe strip value
   function tfValue(tfKey) {
@@ -1513,8 +1528,45 @@ function RichSignalCard({ r, prices, groups, fundamentalsMap, onOpenResearch }) 
       </div>
 
       {/* ── Range bars ── */}
-      <RangePivotBar label="Weekly range" range={weekRange} pivots={weeklyPivots} spot={spot} />
-      <RangePivotBar label="Daily range"  range={dayRange}  pivots={dailyPivots}  spot={spot} />
+      {(() => {
+        // 52-week range bar
+        const r52 = fundamentals?.range52 ?? null;
+        const bar52 = r52 && spot != null
+          ? { range: { low: r52.low, high: r52.high }, pivots: calcPivots(r52.high, r52.low, spot) }
+          : null;
+
+        // Monthly range bar — derived from daily candles
+        const dCandles = (() => {
+          if (!sig?.D?.candles || sig.D.candles.length < 2) return null;
+          let c = sig.D.candles;
+          // de-dup trailing identical candle
+          const lc = c[c.length - 1], slc = c[c.length - 2];
+          if (lc && slc && lc.h === slc.h && lc.l === slc.l && lc.c === slc.c) c = c.slice(0, -1);
+          return c;
+        })();
+        const barMonth = (() => {
+          if (!dCandles || dCandles.length < 2) return null;
+          const recent = dCandles.slice(-21);
+          const range = { high: Math.max(...recent.map(c => c.h)), low: Math.min(...recent.map(c => c.l)) };
+          // previous-month window: candles from ~42 to ~21 days ago
+          const prevWindow = dCandles.length >= 42
+            ? dCandles.slice(-42, -21)
+            : dCandles.slice(0, Math.max(1, dCandles.length - 21));
+          if (prevWindow.length < 2) return { range, pivots: null };
+          const pH = Math.max(...prevWindow.map(c => c.h));
+          const pL = Math.min(...prevWindow.map(c => c.l));
+          const pC = prevWindow[prevWindow.length - 1].c;
+          return { range, pivots: calcPivots(pH, pL, pC) };
+        })();
+
+        return (
+          <>
+            {bar52   && <RangePivotBar label="52-week range" range={bar52.range}   pivots={bar52.pivots}   spot={spot} />}
+            {barMonth && <RangePivotBar label="Monthly range" range={barMonth.range} pivots={barMonth.pivots} spot={spot} />}
+            <RangePivotBar label="Weekly range" range={weekRange} pivots={weeklyPivots} spot={spot} />
+          </>
+        );
+      })()}
 
       {/* ── Context tag ── */}
       {wSince > 12 ? (
